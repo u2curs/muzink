@@ -52,20 +52,22 @@ export default function AdminPage() {
     if (!file || !title) return;
     setUploading(true);
 
-    const filePath = `public/${Date.now()}_${file.name}`;
-    const { error: uploadError } = await supabase.storage.from("tracks").upload(filePath, file);
+    const ext = file.name.split(".").pop()?.toLowerCase() || "mp3";
+    const cleanName = `${Date.now()}-${title.toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "")}.${ext}`;
+
+    const { error: uploadError } = await supabase.storage.from("tracks").upload(cleanName, file);
     if (uploadError) {
-      alert("Upload failed: " + uploadError.message);
+      alert("Upload failed: " + uploadError.message + "\n\nMake sure the 'tracks' bucket exists in your Supabase Storage and its RLS policies allow INSERT.");
       setUploading(false);
       return;
     }
 
-    const { data: urlData } = supabase.storage.from("tracks").getPublicUrl(filePath);
+    const { data: urlData } = supabase.storage.from("tracks").getPublicUrl(cleanName);
     const file_url = urlData.publicUrl;
 
     const { error: dbError } = await supabase.from("playlist").insert({ title, file_url });
     if (dbError) {
-      alert("DB insert failed: " + dbError.message);
+      alert("DB insert failed: " + dbError.message + "\n\nMake sure the 'playlist' table exists with columns: id, title, file_url, created_at");
     } else {
       setTitle("");
       if (fileRef.current) fileRef.current.value = "";
