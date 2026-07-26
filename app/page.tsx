@@ -1,75 +1,91 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
-import { supabase } from "@/lib/supabase";
-import { Headphones, Radio } from "lucide-react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { Music, Shield, User } from "lucide-react";
 
-export default function ClientPage() {
-  const [joined, setJoined] = useState(false);
-  const [playing, setPlaying] = useState(false);
-  const [trackTitle, setTrackTitle] = useState("");
-  const audioRef = useRef<HTMLAudioElement>(null);
+const ADMIN_USERNAME = "u2curs";
+const ADMIN_PASSWORD = "AbCdE123#@$";
+
+export default function LoginPage() {
+  const router = useRouter();
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [role, setRole] = useState<"admin" | "user" | null>(null);
+  const [error, setError] = useState("");
 
   useEffect(() => {
-    if (!joined || !supabase) return;
+    const saved = localStorage.getItem("music-sync-role");
+    if (saved === "admin") router.replace("/admin");
+    else if (saved === "user") router.replace("/client");
+  }, [router]);
 
-    const channel = supabase.channel("audio-sync");
-    channel.on(
-      "broadcast",
-      { event: "PLAY" },
-      (payload) => {
-        const { file_url } = payload.payload as { file_url: string };
-        if (audioRef.current) {
-          audioRef.current.src = file_url;
-          audioRef.current.play().then(() => setPlaying(true)).catch(console.error);
-        }
-        setTrackTitle(file_url.split("/").pop()?.replace(/^\d+_/, "").replace(/\.[^.]+$/, "") || "Unknown Track");
-      }
-    );
-    channel.subscribe();
+  function handleAdminLogin(e: React.FormEvent) {
+    e.preventDefault();
+    setError("");
+    if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
+      localStorage.setItem("music-sync-role", "admin");
+      router.push("/admin");
+    } else {
+      setError("Invalid admin credentials");
+    }
+  }
 
-    return () => { supabase.removeChannel(channel); };
-  }, [joined]);
-
-  if (!joined) {
-    return (
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="bg-slate-800 rounded-2xl p-10 shadow-2xl border border-slate-700 text-center max-w-md w-full">
-          <Radio className="w-16 h-16 text-emerald-400 mx-auto mb-6" />
-          <h1 className="text-2xl font-bold mb-2">Music Sync Player</h1>
-          <p className="text-slate-400 mb-8">Join a synchronized listening session</p>
-          <button
-            onClick={() => setJoined(true)}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-3 px-8 rounded-xl transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg"
-          >
-            Join Sync Session
-          </button>
-        </div>
-      </div>
-    );
+  function handleUserLogin() {
+    localStorage.setItem("music-sync-role", "user");
+    router.push("/client");
   }
 
   return (
     <div className="flex-1 flex items-center justify-center p-6">
       <div className="bg-slate-800 rounded-2xl p-10 shadow-2xl border border-slate-700 text-center max-w-md w-full">
-        <div className={`relative mb-6 ${playing ? "animate-pulse" : ""}`}>
-          <Headphones className={`w-20 h-20 mx-auto transition-colors duration-300 ${playing ? "text-emerald-400" : "text-slate-500"}`} />
-          {playing && (
-            <span className="absolute -top-1 -right-1 flex h-5 w-5">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
-              <span className="relative inline-flex rounded-full h-5 w-5 bg-emerald-500" />
-            </span>
-          )}
+        <Music className="w-14 h-14 text-emerald-400 mx-auto mb-4" />
+        <h1 className="text-2xl font-bold mb-1">Music Sync Player</h1>
+        <p className="text-slate-400 text-sm mb-8">Choose your role to continue</p>
+
+        <form onSubmit={handleAdminLogin} className="mb-6">
+          <h2 className="text-left text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
+            <Shield className="w-4 h-4" /> Admin Login
+          </h2>
+          <input
+            type="text"
+            placeholder="Username"
+            value={username}
+            onChange={(e) => setUsername(e.target.value)}
+            className="w-full bg-slate-700 text-slate-100 rounded-lg px-4 py-2 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-2"
+          />
+          <input
+            type="password"
+            placeholder="Password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="w-full bg-slate-700 text-slate-100 rounded-lg px-4 py-2 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-2"
+          />
+          {error && <p className="text-red-400 text-sm text-left mb-2">{error}</p>}
+          <button
+            type="submit"
+            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+          >
+            Login as Admin
+          </button>
+        </form>
+
+        <div className="relative mb-6">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-slate-700" />
+          </div>
+          <div className="relative flex justify-center text-xs text-slate-500">
+            <span className="bg-slate-800 px-2">or</span>
+          </div>
         </div>
-        <h2 className="text-xl font-bold mb-2">{playing ? "Listening..." : "Session Connected"}</h2>
-        {playing && trackTitle && (
-          <p className="text-emerald-400 font-medium animate-pulse">{trackTitle}</p>
-        )}
-        {!playing && (
-          <p className="text-slate-400">Waiting for the admin to broadcast a track...</p>
-        )}
+
+        <button
+          onClick={handleUserLogin}
+          className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors border border-slate-600"
+        >
+          <User className="w-4 h-4" /> Login as User
+        </button>
       </div>
-      <audio ref={audioRef} />
     </div>
   );
 }
