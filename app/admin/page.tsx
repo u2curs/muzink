@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useState, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { Upload, Play, Music } from "lucide-react";
+import { Upload, Play, Music, LogOut } from "lucide-react";
 
 interface Track {
   id: number;
@@ -11,13 +12,18 @@ interface Track {
 }
 
 export default function AdminPage() {
+  const router = useRouter();
   const [tracks, setTracks] = useState<Track[]>([]);
   const [title, setTitle] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const [broadcastingId, setBroadcastingId] = useState<number | null>(null);
-
   const [envMissing, setEnvMissing] = useState(false);
+
+  useEffect(() => {
+    const role = localStorage.getItem("music-sync-role");
+    if (role !== "admin") router.replace("/");
+  }, [router]);
 
   useEffect(() => {
     if (!supabase) { setEnvMissing(true); return; }
@@ -79,8 +85,19 @@ export default function AdminPage() {
     setTimeout(() => setBroadcastingId(null), 500);
   }
 
+  function handleLogout() {
+    localStorage.removeItem("music-sync-role");
+    router.push("/");
+  }
+
   return (
-    <div className="flex-1 flex flex-col items-center p-6">
+    <div className="flex-1 flex flex-col items-center p-6 relative">
+      <button
+        onClick={handleLogout}
+        className="absolute top-4 right-4 text-slate-400 hover:text-slate-200 transition-colors"
+      >
+        <LogOut className="w-5 h-5" />
+      </button>
       <h1 className="text-3xl font-bold mb-8 flex items-center gap-3 text-emerald-400">
         <Music className="w-8 h-8" /> Admin Dashboard
       </h1>
