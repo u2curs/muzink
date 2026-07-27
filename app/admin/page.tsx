@@ -52,7 +52,8 @@ export default function AdminPage() {
     if (!file || !title) return;
     setUploading(true);
 
-    const filePath = `public/${Date.now()}_${file.name}`;
+    const sanitized = file.name.replace(/[^a-zA-Z0-9._-]/g, "_");
+    const filePath = `public/${Date.now()}_${sanitized}`;
     const { error: uploadError } = await supabase.storage.from("tracks").upload(filePath, file);
     if (uploadError) {
       alert("Upload failed: " + uploadError.message);
