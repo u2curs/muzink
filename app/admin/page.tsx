@@ -78,10 +78,11 @@ export default function AdminPage() {
   async function broadcastPlay(track: Track) {
     if (!supabase) return;
     setBroadcastingId(track.id);
+    const startTime = Date.now() + 3000;
     await supabase.channel("audio-sync").send({
       type: "broadcast",
       event: "PLAY",
-      payload: { file_url: track.file_url },
+      payload: { file_url: track.file_url, start_time: startTime },
     });
     setTimeout(() => setBroadcastingId(null), 500);
   }
