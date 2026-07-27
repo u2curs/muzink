@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { Upload, Play, Music, LogOut } from "lucide-react";
+import { Upload, Play, Music, LogOut, Download, Radio } from "lucide-react";
 
 interface Track {
   id: number;
@@ -17,8 +17,13 @@ export default function AdminPage() {
   const [title, setTitle] = useState("");
   const [uploading, setUploading] = useState(false);
   const fileRef = useRef<HTMLInputElement>(null);
-  const [broadcastingId, setBroadcastingId] = useState<number | null>(null);
   const [envMissing, setEnvMissing] = useState(false);
+
+  const [phase, setPhase] = useState<"idle" | "preparing" | "playing">("idle");
+  const [activeTrack, setActiveTrack] = useState<Track | null>(null);
+  const playStartRef = useRef(0);
+  const channelRef = useRef<ReturnType<typeof supabase.channel>>();
+  const syncRef = useRef<ReturnType<typeof setInterval>>();
 
   useEffect(() => {
     const role = localStorage.getItem("music-sync-role");
@@ -28,7 +33,69 @@ export default function AdminPage() {
   useEffect(() => {
     if (!supabase) { setEnvMissing(true); return; }
     fetchTracks();
+
+    const channel = supabase.channel("audio-sync");
+    channelRef.current = channel;
+
+    channel.on("broadcast", { event: "REQUEST_STATE" }, () => {
+      if (activeTrack && phase === "playing") {
+        const elapsed = (Date.now() - playStartRef.current) / 1000;
+        channel.send({
+          type: "broadcast",
+          event: "STATE",
+          payload: {
+            track: activeTrack.file_url,
+            title: activeTrack.title,
+            start_time: playStartRef.current,
+            position: Math.max(0, elapsed),
+          },
+        });
+      }
+    });
+
+    channel.subscribe();
+    channel.track({ type: "admin", state: "idle" });
+
+    return () => { supabase.removeChannel(channel); };
   }, []);
+
+  useEffect(() => {
+    if (!channelRef.current) return;
+    if (phase === "playing" && activeTrack) {
+      channelRef.current.track({
+        type: "admin",
+        state: "playing",
+        track: activeTrack.file_url,
+        title: activeTrack.title,
+        start_time: playStartRef.current,
+        updated_at: Date.now(),
+      });
+
+      syncRef.current = setInterval(() => {
+        if (!channelRef.current) return;
+        const elapsed = (Date.now() - playStartRef.current) / 1000;
+        channelRef.current.track({
+          type: "admin",
+          state: "playing",
+          track: activeTrack.file_url,
+          title: activeTrack.title,
+          start_time: playStartRef.current,
+          position: Math.max(0, elapsed),
+          updated_at: Date.now(),
+        });
+      }, 2000);
+    } else if (phase === "preparing" && activeTrack) {
+      channelRef.current.track({
+        type: "admin",
+        state: "preparing",
+        track: activeTrack.file_url,
+        title: activeTrack.title,
+      });
+    } else {
+      channelRef.current.track({ type: "admin", state: "idle" });
+    }
+    return () => { if (syncRef.current) clearInterval(syncRef.current); };
+  }, [phase, activeTrack]);
 
   async function fetchTracks() {
     const { data } = await supabase.from("playlist").select("*").order("id", { ascending: false });
@@ -75,22 +142,59 @@ export default function AdminPage() {
     setUploading(false);
   }
 
-  async function broadcastPlay(track: Track) {
-    if (!supabase) return;
-    setBroadcastingId(track.id);
-    const startTime = Date.now() + 5000;
+  async function handlePrepare(track: Track) {
+    if (!supabase || phase !== "idle") return;
+    setActiveTrack(track);
+    setPhase("preparing");
+    await supabase.channel("audio-sync").send({
+      type: "broadcast",
+      event: "PREPARE",
+      payload: { track: track.file_url, title: track.title },
+    });
+  }
+
+  async function handlePlay() {
+    if (!supabase || phase !== "preparing" || !activeTrack) return;
+    const startTime = Date.now() + 500;
+    playStartRef.current = startTime;
+    setPhase("playing");
     await supabase.channel("audio-sync").send({
       type: "broadcast",
       event: "PLAY",
-      payload: { file_url: track.file_url, start_time: startTime },
+      payload: {
+        track: activeTrack.file_url,
+        title: activeTrack.title,
+        start_time: startTime,
+        position: 0,
+      },
     });
-    setTimeout(() => setBroadcastingId(null), 500);
+  }
+
+  function handleStop() {
+    setPhase("idle");
+    setActiveTrack(null);
+    if (channelRef.current) {
+      channelRef.current.track({ type: "admin", state: "idle" });
+      channelRef.current.send({
+        type: "broadcast",
+        event: "STOP",
+        payload: {},
+      });
+    }
   }
 
   function handleLogout() {
     localStorage.removeItem("music-sync-role");
     router.push("/");
   }
+
+  const statusBar = phase === "playing" ? (
+    <span className="text-emerald-400 flex items-center gap-2"><Radio className="w-4 h-4 animate-pulse" /> Now Playing: {activeTrack?.title}</span>
+  ) : phase === "preparing" ? (
+    <span className="text-amber-400 flex items-center gap-2"><Download className="w-4 h-4 animate-pulse" /> Prepared: {activeTrack?.title} — ready to play</span>
+  ) : (
+    <span className="text-slate-400">Idle — select a track to prepare</span>
+  );
 
   return (
     <div className="flex-1 flex flex-col items-center p-6 relative">
@@ -100,9 +204,37 @@ export default function AdminPage() {
       >
         <LogOut className="w-5 h-5" />
       </button>
-      <h1 className="text-3xl font-bold mb-8 flex items-center gap-3 text-emerald-400">
+      <h1 className="text-3xl font-bold mb-2 flex items-center gap-3 text-emerald-400">
         <Music className="w-8 h-8" /> Admin Dashboard
       </h1>
+
+      <div className="w-full max-w-2xl mb-6 bg-slate-800/60 rounded-lg px-5 py-3 border border-slate-700 text-sm flex items-center justify-between">
+        {statusBar}
+        {phase === "preparing" && (
+          <div className="flex gap-2">
+            <button
+              onClick={handlePlay}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+            >
+              <Play className="w-3.5 h-3.5" /> Play Now
+            </button>
+            <button
+              onClick={handleStop}
+              className="text-slate-400 hover:text-slate-200 text-sm px-2 py-1.5 transition-colors"
+            >
+              Cancel
+            </button>
+          </div>
+        )}
+        {phase === "playing" && (
+          <button
+            onClick={handleStop}
+            className="text-red-400 hover:text-red-300 text-sm px-2 py-1.5 transition-colors"
+          >
+            Stop
+          </button>
+        )}
+      </div>
 
       <div className="w-full max-w-2xl bg-slate-800 rounded-xl p-6 shadow-lg border border-slate-700 mb-8">
         <h2 className="text-lg font-semibold mb-4 text-slate-200">Upload Track</h2>
@@ -144,20 +276,37 @@ export default function AdminPage() {
                 </tr>
               </thead>
               <tbody>
-                {tracks.map((track) => (
-                  <tr key={track.id} className="border-b border-slate-700/50">
-                    <td className="py-3 pr-4 text-slate-200">{track.title}</td>
-                    <td className="py-3">
-                      <button
-                        onClick={() => broadcastPlay(track)}
-                        className="flex items-center gap-2 text-emerald-400 hover:text-emerald-300 transition-colors font-medium"
-                      >
-                        <Play className="w-4 h-4" />
-                        {broadcastingId === track.id ? "Playing..." : "Broadcast Play"}
-                      </button>
-                    </td>
-                  </tr>
-                ))}
+                {tracks.map((track) => {
+                  const isActive = activeTrack?.id === track.id;
+                  return (
+                    <tr key={track.id} className="border-b border-slate-700/50">
+                      <td className="py-3 pr-4 text-slate-200">{track.title}</td>
+                      <td className="py-3">
+                        {phase === "idle" && (
+                          <button
+                            onClick={() => handlePrepare(track)}
+                            className="flex items-center gap-1.5 text-emerald-400 hover:text-emerald-300 transition-colors font-medium text-sm"
+                          >
+                            <Download className="w-3.5 h-3.5" /> Prepare
+                          </button>
+                        )}
+                        {phase === "preparing" && isActive && (
+                          <span className="text-amber-400 text-sm flex items-center gap-1.5">
+                            <Download className="w-3.5 h-3.5 animate-pulse" /> Prepared
+                          </span>
+                        )}
+                        {phase === "playing" && isActive && (
+                          <span className="text-emerald-400 text-sm flex items-center gap-1.5">
+                            <Radio className="w-3.5 h-3.5 animate-pulse" /> Live
+                          </span>
+                        )}
+                        {phase !== "idle" && !isActive && (
+                          <span className="text-slate-600 text-sm">—</span>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
