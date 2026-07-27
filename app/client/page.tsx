@@ -33,9 +33,11 @@ export default function ClientPage() {
       const audio = audioRef.current;
       if (!audio) return;
       audio.src = track;
-      audio.addEventListener("canplaythrough", () => {
-        channel.send({ type: "broadcast", event: "READY", payload: {} });
-      }, { once: true });
+      let sent = false;
+      const sendReady = () => { if (!sent) { sent = true; channel.send({ type: "broadcast", event: "READY", payload: {} }); } };
+      audio.addEventListener("canplay", sendReady, { once: true });
+      audio.addEventListener("error", sendReady, { once: true });
+      setTimeout(sendReady, 4000);
       audio.load();
     });
 
