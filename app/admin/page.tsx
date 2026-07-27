@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { Upload, Play, Music, LogOut, Download, Radio } from "lucide-react";
+import { Upload, Play, Pause, Music, LogOut, Download, Radio } from "lucide-react";
 
 interface Track {
   id: number;
@@ -19,9 +19,11 @@ export default function AdminPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [envMissing, setEnvMissing] = useState(false);
 
-  const [phase, setPhase] = useState<"idle" | "preparing" | "playing">("idle");
+  const [phase, setPhase] = useState<"idle" | "preparing" | "playing" | "paused">("idle");
   const [activeTrack, setActiveTrack] = useState<Track | null>(null);
+  const [readyCount, setReadyCount] = useState(0);
   const playStartRef = useRef(0);
+  const pausePositionRef = useRef(0);
   const channelRef = useRef<any>(null);
   const syncRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
@@ -38,19 +40,26 @@ export default function AdminPage() {
     channelRef.current = channel;
 
     channel.on("broadcast", { event: "REQUEST_STATE" }, () => {
-      if (activeTrack && phase === "playing") {
-        const elapsed = (Date.now() - playStartRef.current) / 1000;
+      if (activeTrack && (phase === "playing" || phase === "paused")) {
+        const elapsed = phase === "playing"
+          ? (Date.now() - playStartRef.current) / 1000
+          : pausePositionRef.current;
         channel.send({
           type: "broadcast",
           event: "STATE",
           payload: {
             track: activeTrack.file_url,
             title: activeTrack.title,
-            start_time: playStartRef.current,
+            start_time: phase === "playing" ? playStartRef.current : Date.now(),
             position: Math.max(0, elapsed),
+            is_paused: phase === "paused",
           },
         });
       }
+    });
+
+    channel.on("broadcast", { event: "READY" }, () => {
+      setReadyCount((c) => c + 1);
     });
 
     channel.subscribe();
@@ -84,6 +93,15 @@ export default function AdminPage() {
           updated_at: Date.now(),
         });
       }, 2000);
+    } else if (phase === "paused" && activeTrack) {
+      channelRef.current.track({
+        type: "admin",
+        state: "paused",
+        track: activeTrack.file_url,
+        title: activeTrack.title,
+        position: pausePositionRef.current,
+        updated_at: Date.now(),
+      });
     } else if (phase === "preparing" && activeTrack) {
       channelRef.current.track({
         type: "admin",
@@ -145,6 +163,7 @@ export default function AdminPage() {
   async function handlePrepare(track: Track) {
     if (!supabase || phase !== "idle") return;
     setActiveTrack(track);
+    setReadyCount(0);
     setPhase("preparing");
     await supabase.channel("audio-sync").send({
       type: "broadcast",
@@ -170,9 +189,41 @@ export default function AdminPage() {
     });
   }
 
+  async function handlePause() {
+    if (!supabase || phase !== "playing" || !activeTrack) return;
+    const pos = (Date.now() - playStartRef.current) / 1000;
+    pausePositionRef.current = Math.max(0, pos);
+    if (syncRef.current) clearInterval(syncRef.current);
+    setPhase("paused");
+    await supabase.channel("audio-sync").send({
+      type: "broadcast",
+      event: "PAUSE",
+      payload: { position: pausePositionRef.current },
+    });
+  }
+
+  async function handleResume() {
+    if (!supabase || phase !== "paused" || !activeTrack) return;
+    const startTime = Date.now() + 500;
+    playStartRef.current = startTime;
+    setPhase("playing");
+    await supabase.channel("audio-sync").send({
+      type: "broadcast",
+      event: "PLAY",
+      payload: {
+        track: activeTrack.file_url,
+        title: activeTrack.title,
+        start_time: startTime,
+        position: pausePositionRef.current,
+      },
+    });
+  }
+
   function handleStop() {
     setPhase("idle");
     setActiveTrack(null);
+    setReadyCount(0);
+    if (syncRef.current) clearInterval(syncRef.current);
     if (channelRef.current) {
       channelRef.current.track({ type: "admin", state: "idle" });
       channelRef.current.send({
@@ -188,10 +239,18 @@ export default function AdminPage() {
     router.push("/");
   }
 
-  const statusBar = phase === "playing" ? (
-    <span className="text-emerald-400 flex items-center gap-2"><Radio className="w-4 h-4 animate-pulse" /> Now Playing: {activeTrack?.title}</span>
+  const canPlay = readyCount >= 1;
+
+  const statusBar = phase === "playing" || phase === "paused" ? (
+    <span className={`flex items-center gap-2 ${phase === "playing" ? "text-emerald-400" : "text-amber-400"}`}>
+      <Radio className="w-4 h-4 animate-pulse" />
+      {phase === "playing" ? "Now Playing" : "Paused"}: {activeTrack?.title}
+    </span>
   ) : phase === "preparing" ? (
-    <span className="text-amber-400 flex items-center gap-2"><Download className="w-4 h-4 animate-pulse" /> Prepared: {activeTrack?.title} — ready to play</span>
+    <span className="text-amber-400 flex items-center gap-2">
+      <Download className="w-4 h-4 animate-pulse" />
+      Preparing: {activeTrack?.title} — {readyCount} client{readyCount !== 1 ? "s" : ""} ready
+    </span>
   ) : (
     <span className="text-slate-400">Idle — select a track to prepare</span>
   );
@@ -214,7 +273,8 @@ export default function AdminPage() {
           <div className="flex gap-2">
             <button
               onClick={handlePlay}
-              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+              disabled={!canPlay}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
             >
               <Play className="w-3.5 h-3.5" /> Play Now
             </button>
@@ -227,12 +287,36 @@ export default function AdminPage() {
           </div>
         )}
         {phase === "playing" && (
-          <button
-            onClick={handleStop}
-            className="text-red-400 hover:text-red-300 text-sm px-2 py-1.5 transition-colors"
-          >
-            Stop
-          </button>
+          <div className="flex gap-2">
+            <button
+              onClick={handlePause}
+              className="flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+            >
+              <Pause className="w-3.5 h-3.5" /> Pause
+            </button>
+            <button
+              onClick={handleStop}
+              className="text-red-400 hover:text-red-300 text-sm px-2 py-1.5 transition-colors"
+            >
+              Stop
+            </button>
+          </div>
+        )}
+        {phase === "paused" && (
+          <div className="flex gap-2">
+            <button
+              onClick={handleResume}
+              className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-medium px-4 py-1.5 rounded-lg transition-colors"
+            >
+              <Play className="w-3.5 h-3.5" /> Resume
+            </button>
+            <button
+              onClick={handleStop}
+              className="text-red-400 hover:text-red-300 text-sm px-2 py-1.5 transition-colors"
+            >
+              Stop
+            </button>
+          </div>
         )}
       </div>
 
@@ -290,9 +374,9 @@ export default function AdminPage() {
                             <Download className="w-3.5 h-3.5" /> Prepare
                           </button>
                         )}
-                        {phase === "preparing" && isActive && (
+                        {(phase === "preparing" || phase === "paused") && isActive && (
                           <span className="text-amber-400 text-sm flex items-center gap-1.5">
-                            <Download className="w-3.5 h-3.5 animate-pulse" /> Prepared
+                            <Download className="w-3.5 h-3.5 animate-pulse" /> {phase === "preparing" ? "Preparing..." : "Paused"}
                           </span>
                         )}
                         {phase === "playing" && isActive && (

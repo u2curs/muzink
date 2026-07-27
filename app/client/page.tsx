@@ -8,7 +8,7 @@ import { Headphones, Radio, LogOut, Download } from "lucide-react";
 export default function ClientPage() {
   const router = useRouter();
   const [joined, setJoined] = useState(false);
-  const [state, setState] = useState<"idle" | "preparing" | "playing">("idle");
+  const [state, setState] = useState<"idle" | "preparing" | "playing" | "paused">("idle");
   const [trackTitle, setTrackTitle] = useState("");
   const audioRef = useRef<HTMLAudioElement>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -30,10 +30,13 @@ export default function ClientPage() {
       const { track, title } = payload.payload as { track: string; title: string };
       setTrackTitle(title || "Unknown Track");
       setState("preparing");
-      if (audioRef.current) {
-        audioRef.current.src = track;
-        audioRef.current.load();
-      }
+      const audio = audioRef.current;
+      if (!audio) return;
+      audio.src = track;
+      audio.addEventListener("canplaythrough", () => {
+        channel.send({ type: "broadcast", event: "READY", payload: {} });
+      }, { once: true });
+      audio.load();
     });
 
     channel.on("broadcast", { event: "PLAY" }, (payload) => {
@@ -74,6 +77,17 @@ export default function ClientPage() {
       }
     });
 
+    channel.on("broadcast", { event: "PAUSE" }, (payload) => {
+      const { position } = payload.payload as { position: number };
+      const audio = audioRef.current;
+      if (audio) {
+        audio.pause();
+        audio.currentTime = position || 0;
+      }
+      setState("paused");
+      if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    });
+
     channel.on("broadcast", { event: "STOP" }, () => {
       if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
       setState("idle");
@@ -82,10 +96,19 @@ export default function ClientPage() {
     });
 
     channel.on("broadcast", { event: "STATE" }, (payload) => {
-      const { track, title, start_time, position } = payload.payload as {
-        track: string; title: string; start_time: number; position: number;
+      const { track, title, start_time, position, is_paused } = payload.payload as {
+        track: string; title: string; start_time: number; position: number; is_paused?: boolean;
       };
-      lateJoinSync(track, title, start_time, position);
+      if (is_paused) {
+        setTrackTitle(title || "Unknown Track");
+        setState("paused");
+        if (audioRef.current) {
+          audioRef.current.src = track;
+          audioRef.current.currentTime = position || 0;
+        }
+      } else {
+        lateJoinSync(track, title, start_time, position);
+      }
     });
 
     channel.subscribe(async (status) => {
@@ -103,7 +126,14 @@ export default function ClientPage() {
 
       if (adminState?.state === "playing" && adminState.track) {
         lateJoinSync(adminState.track, adminState.title || "", adminState.start_time || 0, adminState.position || 0);
-      } else if (adminState?.state === "preparing" && adminState.track) {
+      } else if (adminState?.state === "paused" && adminState.track) {
+        setTrackTitle(adminState.title || "Unknown Track");
+        setState("paused");
+        if (audioRef.current) {
+          audioRef.current.src = adminState.track;
+          audioRef.current.currentTime = adminState.position || 0;
+        }
+      } else if ((adminState?.state === "preparing" || adminState?.state === "idle") && adminState.track) {
         setTrackTitle(adminState.title || "Unknown Track");
         setState("preparing");
         if (audioRef.current) {
@@ -173,7 +203,7 @@ export default function ClientPage() {
     );
   }
 
-  const isActive = state !== "idle";
+  const isActive = state === "playing" || state === "preparing";
 
   return (
     <div className="flex-1 flex items-center justify-center p-6">
@@ -187,7 +217,7 @@ export default function ClientPage() {
         <div className={`relative mb-6 ${isActive ? "animate-pulse" : ""}`}>
           <Headphones
             className={`w-20 h-20 mx-auto transition-colors duration-300 ${
-              state === "playing" ? "text-emerald-400" : state === "preparing" ? "text-amber-400" : "text-slate-500"
+              state === "playing" ? "text-emerald-400" : state === "preparing" ? "text-amber-400" : state === "paused" ? "text-amber-400" : "text-slate-500"
             }`}
           />
           {state === "playing" && (
@@ -196,17 +226,17 @@ export default function ClientPage() {
               <span className="relative inline-flex rounded-full h-5 w-5 bg-emerald-500" />
             </span>
           )}
-          {state === "preparing" && (
+          {(state === "preparing" || state === "paused") && (
             <span className="absolute -top-1 -right-1 flex h-5 w-5">
               <span className="animate-spin absolute inline-flex h-full w-full rounded-full border-2 border-t-transparent border-amber-400" />
             </span>
           )}
         </div>
         <h2 className="text-xl font-bold mb-2">
-          {state === "playing" ? "Listening..." : state === "preparing" ? "Preparing..." : "Session Connected"}
+          {state === "playing" ? "Listening..." : state === "preparing" ? "Preparing..." : state === "paused" ? "Paused" : "Session Connected"}
         </h2>
         {trackTitle && (
-          <p className={`font-medium ${isActive ? "animate-pulse" : ""} ${state === "playing" ? "text-emerald-400" : state === "preparing" ? "text-amber-400" : "text-slate-400"}`}>
+          <p className={`font-medium ${isActive ? "animate-pulse" : ""} ${state === "playing" ? "text-emerald-400" : state === "paused" ? "text-amber-400" : state === "preparing" ? "text-amber-400" : "text-slate-400"}`}>
             {trackTitle}
           </p>
         )}
