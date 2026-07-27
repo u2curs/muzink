@@ -22,8 +22,8 @@ export default function AdminPage() {
   const [phase, setPhase] = useState<"idle" | "preparing" | "playing">("idle");
   const [activeTrack, setActiveTrack] = useState<Track | null>(null);
   const playStartRef = useRef(0);
-  const channelRef = useRef<ReturnType<typeof supabase.channel>>();
-  const syncRef = useRef<ReturnType<typeof setInterval>>();
+  const channelRef = useRef<any>(null);
+  const syncRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   useEffect(() => {
     const role = localStorage.getItem("music-sync-role");

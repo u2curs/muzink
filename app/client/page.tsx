@@ -13,7 +13,7 @@ export default function ClientPage() {
   const audioRef = useRef<HTMLAudioElement>(null);
   const syncTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const stateTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const channelRef = useRef<ReturnType<typeof supabase.channel>>();
+  const channelRef = useRef<any>(null);
 
   useEffect(() => {
     const role = localStorage.getItem("music-sync-role");
