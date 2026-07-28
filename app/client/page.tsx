@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { syncClock, getServerTime } from "@/lib/timeSync";
+import { startPeriodicSync, stopPeriodicSync, getServerTime, getOffset } from "@/lib/sync-clock";
 import { Headphones, Radio, LogOut, Heart, Music, Volume2, Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
 
@@ -12,17 +12,24 @@ const EMOJIS = ["❤️", "🔥", "🌟", "🎵", "💚", "💜", "✨"];
 export default function ClientPage() {
   const router = useRouter();
   const { theme, setTheme } = useTheme();
-  const [phase, setPhase] = useState<"join" | "connecting" | "waiting" | "preparing" | "playing" | "paused">("join");
+  const [phase, setPhase] = useState<"join" | "connecting" | "ready" | "loading_track" | "ready_to_play" | "playing" | "paused">("join");
   const [trackTitle, setTrackTitle] = useState("");
-  const [latency, setLatency] = useState(0);
+  const [offset, setOffset] = useState(0);
   const [volume, setVolume] = useState(0.8);
   const [recentEmoji, setRecentEmoji] = useState("");
+  const [downloadProgress, setDownloadProgress] = useState(0);
+  const [drift, setDrift] = useState(0);
 
-  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const clientId = useRef(Math.random().toString(36).substring(2, 9));
+  const audioRef = useRef<AudioContext | null>(null);
   const channelRef = useRef<any>(null);
-  const syncTimerRef = useRef<any>(null);
-  const heartbeatRef = useRef<any>(null);
-  const sessionStartRef = useRef(0);
+  const driftRef = useRef<any>(null);
+  const sourceRef = useRef<AudioBufferSourceNode | null>(null);
+  const gainRef = useRef<GainNode | null>(null);
+  const bufferRef = useRef<AudioBuffer | null>(null);
+  const targetTimeRef = useRef(0);
+  const contextTargetTimeRef = useRef(0);
+  const pausePositionRef = useRef(0);
   const phaseRef = useRef(phase);
   phaseRef.current = phase;
 
@@ -32,123 +39,158 @@ export default function ClientPage() {
   }, [router]);
 
   useEffect(() => {
-    const audio = new Audio();
-    audio.preload = "auto";
-    audio.crossOrigin = "anonymous";
-    audio.volume = volume;
-    audioRef.current = audio;
-
-    audio.addEventListener("canplaythrough", onAudioReady);
-    audio.addEventListener("loadeddata", onAudioReady);
-    audio.addEventListener("error", onAudioError);
-
-    return () => {
-      audio.removeEventListener("canplaythrough", onAudioReady);
-      audio.removeEventListener("loadeddata", onAudioReady);
-      audio.removeEventListener("error", onAudioError);
-      audio.pause();
-      audio.src = "";
-      audioRef.current = null;
-    };
+    startPeriodicSync((off) => setOffset(off));
+    return () => stopPeriodicSync();
   }, []);
 
-  function onAudioReady() {
-    if (phaseRef.current === "preparing") {
-      setPhase("waiting");
-    }
-  }
-
-  function onAudioError() {
-    if (sessionStartRef.current && phaseRef.current === "playing") {
-      const elapsed = (getServerTime() - sessionStartRef.current) / 1000;
-      const audio = audioRef.current;
-      if (audio) { audio.currentTime = elapsed; audio.play().catch(() => {}); }
-    }
-  }
+  useEffect(() => {
+    const ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
+    const gain = ctx.createGain();
+    gain.gain.value = volume;
+    gain.connect(ctx.destination);
+    audioRef.current = ctx;
+    gainRef.current = gain;
+    return () => { ctx.close(); };
+  }, []);
 
   useEffect(() => {
-    if (audioRef.current) audioRef.current.volume = volume;
+    if (gainRef.current) gainRef.current.gain.value = volume;
   }, [volume]);
+
+  useEffect(() => {
+    if (phase !== "playing") {
+      if (driftRef.current) { clearInterval(driftRef.current); driftRef.current = null; }
+      return;
+    }
+    driftRef.current = setInterval(() => {
+      const ctx = audioRef.current;
+      if (!ctx || !targetTimeRef.current) return;
+      const expectedElapsed = (getServerTime() - targetTimeRef.current) / 1000;
+      const actualElapsed = ctx.currentTime - contextTargetTimeRef.current;
+      const driftMs = (actualElapsed - expectedElapsed) * 1000;
+      setDrift(Math.round(driftMs));
+      if (Math.abs(driftMs) > 50) {
+        const source = sourceRef.current;
+        if (source) {
+          source.playbackRate.value = driftMs > 0 ? 0.98 : 1.02;
+          setTimeout(() => { if (source) source.playbackRate.value = 1; }, 1000);
+        }
+      }
+    }, 2000);
+    return () => { if (driftRef.current) clearInterval(driftRef.current); };
+  }, [phase]);
 
   async function handleJoin() {
     setPhase("connecting");
-    const t1 = performance.now();
-    await syncClock();
-    const t4 = performance.now();
-    setLatency(Math.round((t4 - t1) / 3));
+    await startPeriodicSync((off) => setOffset(off));
 
     if (!supabase) { setPhase("join"); return; }
     const channel = supabase.channel("audio-sync");
     channelRef.current = channel;
 
-    channel.on("broadcast", { event: "PREPARE" }, (payload: any) => {
+    channel.on("broadcast", { event: "LOAD" }, async (payload: any) => {
       const { track, title } = payload.payload;
+      if (!track) return;
       setTrackTitle(title || "Unknown Track");
-      setPhase("preparing");
-      clearTimeout(syncTimerRef.current);
-      clearTimeout(heartbeatRef.current);
-
-      const audio = audioRef.current;
-      if (audio) {
-        audio.src = track;
-
-        heartbeatRef.current = setTimeout(() => {
-          audio.play().catch(() => {});
-        }, 3000);
+      setDownloadProgress(0);
+      setPhase("loading_track");
+      try {
+        const buffer = await fetchAndDecode(track);
+        bufferRef.current = buffer;
+        setDownloadProgress(100);
+        channel.send({ type: "broadcast", event: "READY", payload: { clientId: clientId.current } });
+        setPhase("ready_to_play");
+      } catch {
+        setPhase("ready");
       }
     });
 
-    channel.on("broadcast", { event: "PLAY" }, (payload: any) => {
-      const { track, title, start_time, position } = payload.payload;
+    channel.on("broadcast", { event: "PLAY_AT" }, (payload: any) => {
+      const { track, title, targetServerTime, position } = payload.payload;
       if (!track) return;
       setTrackTitle(title || "Unknown Track");
-      clearTimeout(heartbeatRef.current);
+      const ctx = audioRef.current;
+      if (!ctx) return;
 
-      const audio = audioRef.current;
-      if (!audio) return;
-      clearTimeout(syncTimerRef.current);
+      if (ctx.state === "suspended") ctx.resume();
 
-      if (audio.src !== track) { audio.src = track; audio.preload = "auto"; }
+      const currentServerTime = getServerTime();
+      const delayMs = Math.max(0, targetServerTime - currentServerTime);
+      const contextTargetTime = ctx.currentTime + delayMs / 1000;
+      contextTargetTimeRef.current = contextTargetTime;
+      targetTimeRef.current = targetServerTime;
 
-      audio.currentTime = position || 0;
-      sessionStartRef.current = start_time;
+      const source = ctx.createBufferSource();
+      const buffer = bufferRef.current;
+      if (buffer) {
+        source.buffer = buffer;
+        source.playbackRate.value = 1;
+        source.connect(gainRef.current!);
+        source.start(contextTargetTime, position || 0);
+        sourceRef.current = source;
+      }
 
-      const serverNow = getServerTime();
-      const delay = Math.max(0, start_time - serverNow);
-
-      if (delay <= 0) {
-        audio.play().then(() => setPhase("playing")).catch(() => {});
+      if (delayMs <= 0) {
+        setPhase("playing");
       } else {
-        syncTimerRef.current = setTimeout(() => {
-          audio.play().then(() => setPhase("playing")).catch(() => {});
-        }, delay);
+        setTimeout(() => setPhase("playing"), delayMs);
       }
     });
 
     channel.on("broadcast", { event: "PAUSE" }, () => {
-      clearTimeout(syncTimerRef.current);
-      clearTimeout(heartbeatRef.current);
-      audioRef.current?.pause();
+      const ctx = audioRef.current;
+      if (ctx && sourceRef.current) {
+        pausePositionRef.current = ctx.currentTime - contextTargetTimeRef.current + (pausePositionRef.current || 0);
+        sourceRef.current.stop();
+        sourceRef.current = null;
+      }
+      if (driftRef.current) { clearInterval(driftRef.current); driftRef.current = null; }
       setPhase("paused");
     });
 
     channel.on("broadcast", { event: "STOP" }, () => {
-      clearTimeout(syncTimerRef.current);
-      clearTimeout(heartbeatRef.current);
-      if (audioRef.current) { audioRef.current.pause(); audioRef.current.src = ""; }
-      setPhase("waiting");
+      if (sourceRef.current) { try { sourceRef.current.stop(); } catch {} sourceRef.current = null; }
+      if (driftRef.current) { clearInterval(driftRef.current); driftRef.current = null; }
+      bufferRef.current = null;
+      targetTimeRef.current = 0;
+      pausePositionRef.current = 0;
+      setPhase("ready");
       setTrackTitle("");
+      setDownloadProgress(0);
     });
 
-    channel.on("broadcast", { event: "STATE" }, (payload: any) => {
+    channel.on("broadcast", { event: "STATE" }, async (payload: any) => {
       const { track, title, start_time, position, is_paused } = payload.payload;
       if (!track) return;
       setTrackTitle(title || "");
       if (is_paused) {
         setPhase("paused");
-        if (audioRef.current) { audioRef.current.src = track; audioRef.current.currentTime = position || 0; }
-      } else {
-        syncToTrack(track, start_time, position || 0);
+        bufferRef.current = await fetchAndDecode(track);
+        pausePositionRef.current = position || 0;
+      } else if (start_time) {
+        setPhase("loading_track");
+        setDownloadProgress(0);
+        try {
+          const buffer = await fetchAndDecode(track);
+          bufferRef.current = buffer;
+          setDownloadProgress(100);
+          const ctx = audioRef.current;
+          if (!ctx) return;
+          if (ctx.state === "suspended") ctx.resume();
+          const elapsed = (getServerTime() - start_time) / 1000;
+          const seekTo = Math.max(0, (position || 0) + elapsed);
+          contextTargetTimeRef.current = ctx.currentTime;
+          targetTimeRef.current = start_time;
+          const source = ctx.createBufferSource();
+          source.buffer = buffer;
+          source.playbackRate.value = 1;
+          source.connect(gainRef.current!);
+          source.start(0, seekTo);
+          sourceRef.current = source;
+          setPhase("playing");
+        } catch {
+          setPhase("ready");
+        }
       }
     });
 
@@ -162,39 +204,62 @@ export default function ClientPage() {
         }
         if (admin) break;
       }
-      if (admin?.state === "playing" && admin.track) {
-        syncToTrack(admin.track, admin.start_time || 0, admin.position || 0);
-      } else if (admin?.state === "paused") {
+      if (admin?.state === "playing" && admin.track && admin.start_time) {
+        setPhase("loading_track");
+        setTrackTitle(admin.title || "");
+        setDownloadProgress(0);
+        try {
+          const buffer = await fetchAndDecode(admin.track);
+          bufferRef.current = buffer;
+          setDownloadProgress(100);
+          const ctx = audioRef.current;
+          if (!ctx) return;
+          if (ctx.state === "suspended") ctx.resume();
+          const elapsed = (getServerTime() - admin.start_time) / 1000;
+          contextTargetTimeRef.current = ctx.currentTime;
+          targetTimeRef.current = admin.start_time;
+          const source = ctx.createBufferSource();
+          source.buffer = buffer;
+          source.playbackRate.value = 1;
+          source.connect(gainRef.current!);
+          source.start(0, Math.max(0, (admin.position || 0) + elapsed));
+          sourceRef.current = source;
+          setPhase("playing");
+        } catch { setPhase("ready"); }
+      } else if (admin?.state === "paused" && admin.track) {
         setTrackTitle(admin.title || "");
         setPhase("paused");
-        if (audioRef.current) { audioRef.current.src = admin.track; audioRef.current.currentTime = admin.position || 0; }
-      } else if (admin?.state === "preparing") {
+        try { bufferRef.current = await fetchAndDecode(admin.track); } catch {}
+        pausePositionRef.current = admin.position || 0;
+      } else if (admin?.state === "waiting_ready" && admin.track) {
         setTrackTitle(admin.title || "");
-        setPhase("preparing");
+        setPhase("ready");
       } else {
-        setPhase("waiting");
+        setPhase("ready");
       }
     });
-
-    setPhase("waiting");
   }
 
-  function syncToTrack(track: string, startTime: number, position: number) {
-    setPhase("preparing");
-    clearTimeout(syncTimerRef.current);
-    clearTimeout(heartbeatRef.current);
-
-    const audio = audioRef.current;
-    if (!audio) return;
-
-    audio.src = track;
-    audio.preload = "auto";
-    sessionStartRef.current = startTime;
-
-    const elapsed = (getServerTime() - startTime) / 1000;
-    const seekTo = Math.max(0, position + elapsed);
-    audio.currentTime = seekTo;
-    audio.play().then(() => setPhase("playing")).catch(() => {});
+  async function fetchAndDecode(url: string): Promise<AudioBuffer> {
+    const ctx = audioRef.current;
+    if (!ctx) throw new Error("No AudioContext");
+    const response = await fetch(url);
+    const contentLength = response.headers.get("content-length");
+    const reader = response.body!.getReader();
+    const chunks: Uint8Array[] = [];
+    let receivedLength = 0;
+    const total = contentLength ? parseInt(contentLength) : 0;
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      chunks.push(value);
+      receivedLength += value.length;
+      if (total) setDownloadProgress(Math.round((receivedLength / total) * 90));
+    }
+    const arrayBuf = new Uint8Array(receivedLength);
+    let pos = 0;
+    for (const chunk of chunks) { arrayBuf.set(chunk, pos); pos += chunk.length; }
+    return ctx.decodeAudioData(arrayBuf.buffer);
   }
 
   function handleReact() {
@@ -204,10 +269,7 @@ export default function ClientPage() {
     channelRef.current?.send({ type: "broadcast", event: "REACT", payload: { emoji } });
   }
 
-  function handleLogout() {
-    localStorage.removeItem("music-sync-role");
-    router.push("/");
-  }
+  function handleLogout() { stopPeriodicSync(); localStorage.removeItem("music-sync-role"); router.push("/"); }
 
   if (phase === "join") {
     return (
@@ -220,7 +282,7 @@ export default function ClientPage() {
             <Radio className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-2xl font-bold mb-1 text-gradient-moving">Music Sync</h1>
-          <p className="text-muted text-sm mb-8">Join a synchronized listening session</p>
+          <p className="text-muted text-sm mb-8">Web Audio synchronized listening</p>
           <button onClick={handleJoin}
             className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-semibold py-3 px-8 rounded-xl transition-all duration-300 hover:scale-[1.02] active:scale-95">
             Join Session
@@ -257,45 +319,56 @@ export default function ClientPage() {
           </div>
         )}
 
-        {phase === "waiting" && (
+        {phase === "ready" && (
           <div className="py-8">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center">
               <Headphones className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-lg font-semibold mb-1 text-gradient">Session Connected</h2>
-            <p className="text-xs text-muted mb-2">Latency: ~{latency}ms</p>
-            <div className="flex items-center justify-center gap-1.5 mb-4">
-              <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-              <span className="text-xs text-emerald-400">Live</span>
-            </div>
+            <p className="text-xs text-muted mb-2 flex items-center justify-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${offset !== 0 ? "bg-emerald-400" : "bg-amber-400"} animate-pulse`} />
+              Offset: {offset}ms
+            </p>
             <p className="text-sm text-muted">Waiting for admin to broadcast...</p>
           </div>
         )}
 
-        {(phase === "preparing" || phase === "paused") && (
+        {phase === "loading_track" && (
           <div className="py-8">
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center animate-pulse">
               <Music className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-lg font-semibold mb-1 text-gradient">{phase === "preparing" ? "Preparing..." : "Paused"}</h2>
-            {trackTitle && <p className="text-emerald-400 font-medium">{trackTitle}</p>}
-            {phase === "preparing" && (
-              <div className="mt-5 flex items-center justify-center gap-1 h-8">
-                {Array.from({ length: barCount }).map((_, i) => (
-                  <div key={i} className="w-2.5 rounded-full bg-gradient-to-t from-emerald-400 to-emerald-600 equalizer-bar"
-                    style={{ height: "2rem", "--i": i } as React.CSSProperties} />
-                ))}
-              </div>
-            )}
+            <h2 className="text-lg font-semibold mb-1 text-gradient">Buffering...</h2>
+            {trackTitle && <p className="text-emerald-400 font-medium text-sm mb-4">{trackTitle}</p>}
+            <div className="w-full h-2 rounded-full bg-white/10 overflow-hidden mb-2">
+              <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-emerald-600 transition-all duration-300 ease-out"
+                style={{ width: `${downloadProgress}%` }} />
+            </div>
+            <p className="text-xs text-muted">{downloadProgress}%</p>
           </div>
         )}
 
-        {phase === "playing" && (
+        {phase === "ready_to_play" && (
+          <div className="py-8">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center">
+              <Headphones className="w-10 h-10 text-white" />
+            </div>
+            <h2 className="text-lg font-semibold mb-1 text-gradient">Ready to Play</h2>
+            {trackTitle && <p className="text-emerald-400 font-medium">{trackTitle}</p>}
+            <p className="text-xs text-muted mt-2">Waiting for admin to start...</p>
+          </div>
+        )}
+
+        {(phase === "playing" || phase === "paused") && (
           <div className="py-4">
             <div className="w-24 h-24 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center">
               <Music className="w-12 h-12 text-white" />
             </div>
-            {trackTitle && <h2 className="text-lg font-bold mb-4 text-gradient-moving">{trackTitle}</h2>}
+            {trackTitle && <h2 className="text-lg font-bold mb-1 text-gradient-moving">{trackTitle}</h2>}
+            <p className="text-xs text-muted mb-2 flex items-center justify-center gap-1">
+              <span className={`w-1.5 h-1.5 rounded-full ${phase === "playing" ? "bg-emerald-400 animate-pulse" : "bg-amber-400"}`} />
+              {phase === "playing" ? "Playing" : "Paused"} &middot; Drift: {drift}ms
+            </p>
 
             <div className="flex items-center justify-center gap-1 h-16 mb-5">
               {Array.from({ length: barCount * 2 }).map((_, i) => (

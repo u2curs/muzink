@@ -3,11 +3,11 @@
 import { useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
-import { syncClock, getServerTime } from "@/lib/timeSync";
+import { startPeriodicSync, stopPeriodicSync, getServerTime, getOffset } from "@/lib/sync-clock";
 import { useTheme } from "next-themes";
 import {
-  Upload, Play, Pause, Music, LogOut, Download, Radio, Sun, Moon,
-  Heart, Disc, PanelRight, Volume2, List,
+  Upload, Play, Pause, Music, LogOut, Radio, Sun, Moon,
+  Heart, Disc, List, SkipForward,
 } from "lucide-react";
 
 interface Track { id: number; title: string; file_url: string; }
@@ -24,17 +24,19 @@ export default function AdminPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const [envMissing, setEnvMissing] = useState(false);
   const [drawerOpen, setDrawerOpen] = useState(true);
+  const [offset, setOffset] = useState(0);
 
-  const [phase, setPhase] = useState<"idle" | "playing" | "paused">("idle");
+  const [phase, setPhase] = useState<"idle" | "waiting_ready" | "countdown" | "playing" | "paused">("idle");
   const [activeTrack, setActiveTrack] = useState<Track | null>(null);
   const [reactions, setReactions] = useState<Reaction[]>([]);
   const [countdown, setCountdown] = useState(0);
+  const [readyClients, setReadyClients] = useState<Set<string>>(new Set());
   const countdownRef = useRef<any>(null);
   const channelRef = useRef<any>(null);
   const syncRef = useRef<any>(null);
   const playStartRef = useRef(0);
   const pausePositionRef = useRef(0);
-  const [ntpReady, setNtpReady] = useState(false);
+  const targetTimeRef = useRef(0);
 
   useEffect(() => {
     const role = localStorage.getItem("music-sync-role");
@@ -42,7 +44,8 @@ export default function AdminPage() {
   }, [router]);
 
   useEffect(() => {
-    syncClock().then(() => setNtpReady(true));
+    startPeriodicSync((off) => setOffset(off));
+    return () => stopPeriodicSync();
   }, []);
 
   useEffect(() => {
@@ -53,15 +56,22 @@ export default function AdminPage() {
     channelRef.current = channel;
 
     channel.on("broadcast", { event: "REQUEST_STATE" }, () => {
-      if (activeTrack && (phase === "playing" || phase === "paused")) {
-        const elapsed = phase === "playing" ? (getServerTime() - playStartRef.current) / 1000 : pausePositionRef.current;
+      if (activeTrack && (phase === "playing" || phase === "paused" || phase === "waiting_ready")) {
         channel.send({
           type: "broadcast", event: "STATE", payload: {
             track: activeTrack.file_url, title: activeTrack.title,
-            start_time: phase === "playing" ? playStartRef.current : getServerTime(),
-            position: Math.max(0, elapsed), is_paused: phase === "paused",
+            start_time: playStartRef.current,
+            position: phase === "playing" ? Math.max(0, (getServerTime() - playStartRef.current) / 1000) : pausePositionRef.current,
+            is_paused: phase === "paused",
           },
         });
+      }
+    });
+
+    channel.on("broadcast", { event: "READY" }, (payload: any) => {
+      const { clientId } = payload.payload;
+      if (clientId && phase === "waiting_ready") {
+        setReadyClients((prev) => new Set(prev).add(clientId));
       }
     });
 
@@ -80,10 +90,13 @@ export default function AdminPage() {
     if (!channelRef.current) return;
     if (phase === "playing" && activeTrack) {
       channelRef.current.track({ type: "admin", state: "playing", track: activeTrack.file_url, title: activeTrack.title, start_time: playStartRef.current, updated_at: getServerTime() });
+      if (syncRef.current) clearInterval(syncRef.current);
       syncRef.current = setInterval(() => {
         if (!channelRef.current) return;
         channelRef.current.track({ type: "admin", state: "playing", track: activeTrack.file_url, title: activeTrack.title, start_time: playStartRef.current, position: Math.max(0, (getServerTime() - playStartRef.current) / 1000), updated_at: getServerTime() });
       }, 2000);
+    } else if (phase === "waiting_ready" && activeTrack) {
+      channelRef.current.track({ type: "admin", state: "waiting_ready", track: activeTrack.file_url, title: activeTrack.title, updated_at: getServerTime() });
     } else if (phase === "paused" && activeTrack) {
       channelRef.current.track({ type: "admin", state: "paused", track: activeTrack.file_url, title: activeTrack.title, position: pausePositionRef.current, updated_at: getServerTime() });
     } else {
@@ -91,6 +104,12 @@ export default function AdminPage() {
     }
     return () => { if (syncRef.current) clearInterval(syncRef.current); };
   }, [phase, activeTrack]);
+
+  useEffect(() => {
+    if (phase === "waiting_ready" && activeTrack) {
+      channelRef.current?.send({ type: "broadcast", event: "LOAD", payload: { track: activeTrack.file_url, title: activeTrack.title, track_id: activeTrack.id } });
+    }
+  }, [phase === "waiting_ready"]);
 
   async function fetchTracks() {
     const { data } = await supabase.from("playlist").select("*").order("id", { ascending: false });
@@ -113,20 +132,26 @@ export default function AdminPage() {
     setUploading(false);
   }
 
-  async function handlePlay(track: Track) {
-    if (!supabase) return;
+  function handleSelectTrack(track: Track) {
+    if (phase === "playing" || phase === "paused") {
+      handleStop();
+    }
     setActiveTrack(track);
+    setReadyClients(new Set());
+    setPhase("waiting_ready");
+  }
 
-    const targetTime = getServerTime() + 1500;
+  function handlePlayAll() {
+    if (!supabase || !activeTrack) return;
+    const targetTime = getServerTime() + 2000;
+    targetTimeRef.current = targetTime;
     playStartRef.current = targetTime;
     setCountdown(100);
-
-    await supabase.channel("audio-sync").send({ type: "broadcast", event: "PREPARE", payload: { track: track.file_url, title: track.title } });
 
     if (countdownRef.current) clearInterval(countdownRef.current);
     countdownRef.current = setInterval(() => {
       const remaining = Math.max(0, targetTime - getServerTime());
-      const pct = (remaining / 1500) * 100;
+      const pct = (remaining / 2000) * 100;
       setCountdown(pct);
       if (remaining <= 0) {
         clearInterval(countdownRef.current);
@@ -135,15 +160,17 @@ export default function AdminPage() {
       }
     }, 16);
 
+    setPhase("countdown");
+
     setTimeout(async () => {
       setPhase("playing");
       await supabase.channel("audio-sync").send({
-        type: "broadcast", event: "PLAY", payload: {
-          track: track.file_url, title: track.title,
-          start_time: targetTime, position: 0,
+        type: "broadcast", event: "PLAY_AT", payload: {
+          track: activeTrack.file_url, title: activeTrack.title,
+          targetServerTime: targetTime, position: 0,
         },
       });
-    }, 1500);
+    }, 2000);
   }
 
   async function handlePause() {
@@ -156,14 +183,15 @@ export default function AdminPage() {
 
   async function handleResume() {
     if (!supabase || phase !== "paused" || !activeTrack) return;
-    const targetTime = getServerTime() + 1500;
+    const targetTime = getServerTime() + 2000;
+    targetTimeRef.current = targetTime;
     playStartRef.current = targetTime;
     setCountdown(100);
 
     if (countdownRef.current) clearInterval(countdownRef.current);
     countdownRef.current = setInterval(() => {
       const remaining = Math.max(0, targetTime - getServerTime());
-      setCountdown((remaining / 1500) * 100);
+      setCountdown((remaining / 2000) * 100);
       if (remaining <= 0) {
         clearInterval(countdownRef.current);
         countdownRef.current = null;
@@ -171,25 +199,34 @@ export default function AdminPage() {
       }
     }, 16);
 
+    setPhase("countdown");
+
     setTimeout(async () => {
       setPhase("playing");
       await supabase.channel("audio-sync").send({
-        type: "broadcast", event: "PLAY", payload: {
+        type: "broadcast", event: "PLAY_AT", payload: {
           track: activeTrack.file_url, title: activeTrack.title,
-          start_time: targetTime, position: pausePositionRef.current,
+          targetServerTime: targetTime, position: pausePositionRef.current,
         },
       });
-    }, 1500);
+    }, 2000);
   }
 
   function handleStop() {
-    setPhase("idle"); setActiveTrack(null);
+    setPhase("idle"); setActiveTrack(null); setReadyClients(new Set());
     if (syncRef.current) clearInterval(syncRef.current);
     if (countdownRef.current) { clearInterval(countdownRef.current); countdownRef.current = null; setCountdown(0); }
     if (channelRef.current) { channelRef.current.track({ type: "admin", state: "idle" }); channelRef.current.send({ type: "broadcast", event: "STOP", payload: {} }); }
   }
 
-  function handleLogout() { localStorage.removeItem("music-sync-role"); router.push("/"); }
+  function handleSkip(index: number) {
+    if (tracks.length === 0) return;
+    const nextIdx = (index + 1) % tracks.length;
+    const next = tracks[nextIdx];
+    handleSelectTrack(next);
+  }
+
+  function handleLogout() { stopPeriodicSync(); localStorage.removeItem("music-sync-role"); router.push("/"); }
 
   if (envMissing) {
     return (
@@ -202,7 +239,8 @@ export default function AdminPage() {
     );
   }
 
-  const isActive = phase === "playing" || phase === "paused";
+  const isActive = phase === "playing" || phase === "paused" || phase === "countdown";
+  const readyCount = readyClients.size;
   const circumference = 2 * Math.PI * 14;
 
   return (
@@ -216,6 +254,10 @@ export default function AdminPage() {
             <Music className="w-5 h-5 text-white" />
           </div>
           <h1 className="font-bold text-gradient-moving text-lg">Admin Dashboard</h1>
+          <span className="text-xs text-muted ml-2 flex items-center gap-1">
+            <span className={`w-1.5 h-1.5 rounded-full ${offset !== 0 ? "bg-emerald-400" : "bg-amber-400"} animate-pulse`} />
+            {Math.abs(offset)}ms
+          </span>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
@@ -241,24 +283,16 @@ export default function AdminPage() {
               tracks.map((track) => {
                 const isActiveT = activeTrack?.id === track.id;
                 return (
-                  <div key={track.id} className="group relative">
-                    <button onClick={() => setActiveTrack(track)}
-                      className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all duration-200 ${
-                        isActiveT ? "bg-emerald-500/15 text-emerald-400 font-medium" : "hover:bg-white/10 text-fg"
-                      }`}>
-                      <div className="flex items-center gap-2.5">
-                        <Music className="w-4 h-4 shrink-0" />
-                        <span className="truncate">{track.title}</span>
-                        {isActiveT && phase === "playing" && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />}
-                      </div>
-                    </button>
-                    {!isActive && (
-                      <button onClick={() => handlePlay(track)}
-                        className="absolute right-2 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity duration-200 p-1 rounded-lg bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400">
-                        <Play className="w-3.5 h-3.5" />
-                      </button>
-                    )}
-                  </div>
+                  <button key={track.id} onClick={() => handleSelectTrack(track)}
+                    className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all duration-200 ${
+                      isActiveT ? "bg-emerald-500/15 text-emerald-400 font-medium" : "hover:bg-white/10 text-fg"
+                    }`}>
+                    <div className="flex items-center gap-2.5">
+                      <Music className="w-4 h-4 shrink-0" />
+                      <span className="truncate">{track.title}</span>
+                      {isActiveT && (phase === "playing" || phase === "countdown") && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />}
+                    </div>
+                  </button>
                 );
               })
             )}
@@ -272,7 +306,7 @@ export default function AdminPage() {
             <input ref={fileRef} type="file" accept="audio/*"
               className="w-full text-xs text-muted mb-2 file:mr-2 file:py-1 file:px-2.5 file:rounded-xl file:border-0 file:bg-emerald-500/15 file:text-emerald-400 file:font-medium file:text-xs file:cursor-pointer" />
             <button onClick={handleUpload} disabled={uploading || !title || !fileRef.current?.files?.length}
-              className="w-full bento-btn bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-medium py-2 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+              className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-medium py-2 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
               <Upload className="w-3 h-3" /> {uploading ? "Uploading..." : "Upload"}
             </button>
           </div>
@@ -296,6 +330,22 @@ export default function AdminPage() {
             </div>
           </div>
 
+          <div className="glass rounded-2xl p-6">
+            <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
+              <Radio className="w-3.5 h-3.5" /> Devices
+            </h2>
+            <div className="flex items-center gap-3">
+              {readyCount > 0 ? (
+                <span className="text-emerald-400 font-semibold text-lg">{readyCount} ready</span>
+              ) : (
+                <span className="text-muted text-sm">No devices connected</span>
+              )}
+              {phase === "waiting_ready" && (
+                <span className="text-xs text-muted animate-pulse">Waiting for devices to buffer...</span>
+              )}
+            </div>
+          </div>
+
           {!activeTrack && (
             <div className="glass rounded-2xl p-10 text-center">
               <Music className="w-12 h-12 text-muted/30 mx-auto mb-3" />
@@ -306,7 +356,7 @@ export default function AdminPage() {
         </div>
       </div>
 
-      <div className={`fixed bottom-0 left-0 right-0 z-30 glass-strong border-t border-white/10 px-6 py-3 flex items-center justify-between transition-all duration-300`}>
+      <div className="fixed bottom-0 left-0 right-0 z-30 glass-strong border-t border-white/10 px-6 py-3 flex items-center justify-between transition-all duration-300">
         <div className="flex items-center gap-4 min-w-0">
           {activeTrack ? (
             <>
@@ -315,7 +365,9 @@ export default function AdminPage() {
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate">{activeTrack.title}</p>
-                <p className="text-xs text-muted">{phase === "playing" ? "Playing" : phase === "paused" ? "Paused" : "Ready"}</p>
+                <p className="text-xs text-muted">
+                  {phase === "waiting_ready" ? "Buffering..." : phase === "countdown" ? "Starting..." : phase === "playing" ? "Playing" : phase === "paused" ? "Paused" : "Ready"}
+                </p>
               </div>
             </>
           ) : (
@@ -324,7 +376,7 @@ export default function AdminPage() {
         </div>
 
         <div className="flex items-center gap-3">
-          {countdown > 0 && (
+          {countdown > 0 && phase === "countdown" && (
             <div className="countdown-active w-9 h-9 rounded-full flex items-center justify-center">
               <svg className="w-9 h-9 -rotate-90" viewBox="0 0 32 32">
                 <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/10" />
@@ -338,17 +390,23 @@ export default function AdminPage() {
             </div>
           )}
 
-          {activeTrack && !isActive && (
-            <button onClick={() => handlePlay(activeTrack)}
+          {phase === "waiting_ready" && (
+            <button onClick={handlePlayAll}
               className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-medium px-5 py-2 rounded-xl text-sm transition-all duration-300 hover:scale-[1.02] active:scale-95">
-              <Play className="w-4 h-4" /> Play Now
+              <Play className="w-4 h-4" /> Play All
             </button>
           )}
           {phase === "playing" && (
-            <button onClick={handlePause}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white font-medium px-5 py-2 rounded-xl text-sm transition-all duration-300 hover:scale-[1.02] active:scale-95">
-              <Pause className="w-4 h-4" /> Pause
-            </button>
+            <>
+              <button onClick={() => handleSkip(tracks.findIndex((t) => t.id === activeTrack?.id))}
+                className="p-2 rounded-xl text-muted hover:text-emerald-400 transition-all duration-300 hover:bg-white/10">
+                <SkipForward className="w-4 h-4" />
+              </button>
+              <button onClick={handlePause}
+                className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white font-medium px-5 py-2 rounded-xl text-sm transition-all duration-300 hover:scale-[1.02] active:scale-95">
+                <Pause className="w-4 h-4" /> Pause
+              </button>
+            </>
           )}
           {phase === "paused" && (
             <button onClick={handleResume}
