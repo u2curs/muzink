@@ -48,10 +48,10 @@ export default function LoginPage() {
       </button>
 
       <div className="glass rounded-3xl p-10 shadow-2xl text-center max-w-md w-full">
-        <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-lg">
+          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg">
           <Music className="w-8 h-8 text-white" />
         </div>
-        <h1 className="text-2xl font-bold mb-1">Music Sync Player</h1>
+        <h1 className="text-2xl font-bold mb-1 text-gradient-moving">Music Sync Player</h1>
         <p className="text-muted text-sm mb-8">Choose your role to continue</p>
 
         <form onSubmit={handleAdminLogin} className="mb-6">
@@ -71,7 +71,7 @@ export default function LoginPage() {
           {error && <p className="text-red-400 text-sm text-left mb-2">{error}</p>}
           <button
             type="submit"
-            className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-semibold py-2.5 px-4 rounded-xl transition-all duration-200 hover:scale-[1.01] active:scale-95 shadow-lg"
+            className="w-full btn-primary text-white font-semibold py-2.5 px-4 rounded-xl shadow-lg"
           >
             Login as Admin
           </button>
@@ -79,12 +79,12 @@ export default function LoginPage() {
 
         <div className="relative mb-6">
           <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10" /></div>
-          <div className="relative flex justify-center text-xs text-muted"><span className="px-2 bg-transparent">or</span></div>
+          <div className="relative flex justify-center text-xs"><span className="px-2 bg-transparent text-gradient-moving font-semibold">or</span></div>
         </div>
 
         <button
           onClick={handleUserLogin}
-          className="w-full flex items-center justify-center gap-2 glass-strong hover:bg-white/15 text-fg font-semibold py-2.5 px-4 rounded-xl transition-all duration-200 hover:scale-[1.01] active:scale-95"
+          className="w-full flex items-center justify-center gap-2 glass-strong hover:bg-emerald-500/10 text-fg font-semibold py-2.5 px-4 rounded-xl transition-all duration-200 hover:scale-[1.01] active:scale-95 border border-emerald-500/20 hover:border-emerald-500/40"
         >
           <User className="w-4 h-4" /> Login as User
         </button>

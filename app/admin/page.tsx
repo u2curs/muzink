@@ -153,7 +153,7 @@ export default function AdminPage() {
     return (
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="glass rounded-xl p-8 text-center max-w-md">
-          <h1 className="text-xl font-bold mb-2">Configuration Required</h1>
+          <h1 className="text-xl font-bold mb-2 text-gradient-moving">Configuration Required</h1>
           <p className="text-muted">Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local</p>
         </div>
       </div>
@@ -166,15 +166,15 @@ export default function AdminPage() {
   return (
     <div className="flex-1 flex flex-col h-screen overflow-hidden">
       <header className="glass-strong px-6 py-3 flex items-center justify-between shrink-0 z-20">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-muted hover:text-fg transition-colors">
-            <PanelLeft className="w-5 h-5" />
-          </button>
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center">
-            <Music className="w-4 h-4 text-white" />
-          </div>
-          <h1 className="font-bold text-sm">Admin Dashboard</h1>
-        </div>
+                <div className="flex items-center gap-3">
+                  <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-muted hover:text-fg transition-colors">
+                    <PanelLeft className="w-5 h-5" />
+                  </button>
+                  <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg">
+                    <Music className="w-4 h-4 text-white" />
+                  </div>
+                  <h1 className="font-bold text-sm text-gradient-moving">Admin Dashboard</h1>
+                </div>
         <div className="flex items-center gap-3">
           <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")} className="text-muted hover:text-fg transition-colors p-1.5 rounded-lg hover:bg-white/5">
             {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
@@ -192,7 +192,7 @@ export default function AdminPage() {
               <button key={tab.key} onClick={() => setActiveTab(tab.key)}
                 className={`w-full flex items-center gap-3 px-4 py-2.5 rounded-xl text-sm font-medium transition-all duration-200 ${
                   activeTab === tab.key
-                    ? "bg-emerald-500/15 text-emerald-400 shadow-sm"
+                    ? "bg-gradient-to-r from-emerald-500/20 to-emerald-400/10 text-emerald-400 shadow-sm border-l-2 border-emerald-400"
                     : "text-muted hover:text-fg hover:bg-white/5"
                 }`}
               >
@@ -206,14 +206,14 @@ export default function AdminPage() {
         <main className="flex-1 overflow-y-auto p-6">
           {activeTab === "upload" && (
             <div className="glass rounded-2xl p-6 max-w-2xl mx-auto">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Upload className="w-5 h-5 text-emerald-400" /> Upload Track</h2>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-gradient-moving"><Upload className="w-5 h-5 text-emerald-400" /> Upload Track</h2>
               <div className="flex flex-col gap-4">
                 <input type="text" placeholder="Track title" value={title} onChange={(e) => setTitle(e.target.value)}
                   className="bg-white/10 text-fg rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 placeholder:text-muted/60" />
                 <input ref={fileRef} type="file" accept="audio/*"
                   className="text-muted file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:bg-emerald-500/20 file:text-emerald-400 file:font-medium hover:file:bg-emerald-500/30 file:cursor-pointer file:transition-colors" />
                 <button onClick={handleUpload} disabled={uploading || !title || !fileRef.current?.files?.length}
-                  className="flex items-center justify-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white font-medium py-2.5 px-4 rounded-xl transition-all duration-200">
+                  className="flex items-center justify-center gap-2 btn-primary text-white font-medium py-2.5 px-4 rounded-xl">
                   <Upload className="w-4 h-4" /> {uploading ? "Uploading..." : "Upload"}
                 </button>
               </div>
@@ -222,7 +222,7 @@ export default function AdminPage() {
 
           {activeTab === "library" && (
             <div className="glass rounded-2xl p-6 max-w-3xl mx-auto">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Library className="w-5 h-5 text-emerald-400" /> Media Library</h2>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-gradient-moving"><Library className="w-5 h-5 text-emerald-400" /> Media Library</h2>
               {tracks.length === 0 ? (
                 <p className="text-muted text-center py-8">No tracks uploaded yet. Go to Upload to add music.</p>
               ) : (
@@ -232,7 +232,7 @@ export default function AdminPage() {
                     return (
                       <div key={track.id} className="flex items-center justify-between px-4 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors">
                         <div className="flex items-center gap-3">
-                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400/30 to-emerald-600/30 flex items-center justify-center">
+                          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-emerald-400/30 via-emerald-500/30 to-emerald-600/30 flex items-center justify-center">
                             <Music className="w-5 h-5 text-emerald-400" />
                           </div>
                           <span className="font-medium text-sm">{track.title}</span>
@@ -262,7 +262,7 @@ export default function AdminPage() {
 
           {activeTab === "reactions" && (
             <div className="glass rounded-2xl p-6 max-w-2xl mx-auto">
-              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2"><Heart className="w-5 h-5 text-rose-400" /> Live Reactions</h2>
+              <h2 className="text-lg font-semibold mb-4 flex items-center gap-2 text-gradient-moving"><Heart className="w-5 h-5 text-rose-400" /> Live Reactions</h2>
               <div className="relative h-64 rounded-xl bg-gradient-to-b from-white/[0.03] to-transparent border border-white/[0.05] overflow-hidden">
                 {reactions.length === 0 ? (
                   <div className="absolute inset-0 flex items-center justify-center text-muted/50 text-sm">Waiting for reactions from listeners...</div>
@@ -273,7 +273,7 @@ export default function AdminPage() {
                 )}
               </div>
               <div className="mt-3 flex items-center gap-2 text-xs text-muted">
-                <Heart className="w-3 h-3 text-rose-400" />
+                <Heart className="w-3 h-3 text-rose-400 animate-pulse" />
                 <span>{reactions.length} reaction{reactions.length !== 1 ? "s" : ""} in last 3s</span>
               </div>
             </div>
@@ -285,7 +285,7 @@ export default function AdminPage() {
         <div className="flex items-center gap-3 min-w-0">
           {activeTrack && (
             <>
-              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400/30 to-emerald-600/30 flex items-center justify-center shrink-0">
+              <div className="w-10 h-10 rounded-xl bg-gradient-to-br from-emerald-400/30 via-emerald-500/30 to-emerald-600/30 flex items-center justify-center shrink-0">
                 <Music className="w-5 h-5 text-emerald-400" />
               </div>
               <div className="min-w-0">
@@ -299,7 +299,7 @@ export default function AdminPage() {
           {phase === "preparing" && (
             <>
               <button onClick={handlePlay} disabled={!canPlay}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 disabled:opacity-40 disabled:cursor-not-allowed text-white text-sm font-medium px-5 py-2 rounded-xl transition-all duration-200">
+                className="flex items-center gap-1.5 btn-primary text-white text-sm font-medium px-5 py-2 rounded-xl">
                 <Play className="w-4 h-4" /> Play Now
               </button>
               <button onClick={handleStop} className="text-muted hover:text-red-400 text-sm px-3 py-2 transition-colors">Cancel</button>
@@ -308,7 +308,7 @@ export default function AdminPage() {
           {phase === "playing" && (
             <>
               <button onClick={handlePause}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white text-sm font-medium px-5 py-2 rounded-xl transition-all duration-200">
+                className="flex items-center gap-1.5 btn-amber text-white text-sm font-medium px-5 py-2 rounded-xl">
                 <Pause className="w-4 h-4" /> Pause
               </button>
               <button onClick={handleStop} className="text-muted hover:text-red-400 text-sm px-3 py-2 transition-colors">Stop</button>
@@ -317,7 +317,7 @@ export default function AdminPage() {
           {phase === "paused" && (
             <>
               <button onClick={handleResume}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white text-sm font-medium px-5 py-2 rounded-xl transition-all duration-200">
+                className="flex items-center gap-1.5 btn-primary text-white text-sm font-medium px-5 py-2 rounded-xl">
                 <Play className="w-4 h-4" /> Resume
               </button>
               <button onClick={handleStop} className="text-muted hover:text-red-400 text-sm px-3 py-2 transition-colors">Stop</button>

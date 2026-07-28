@@ -70,6 +70,67 @@ body {
   50% { transform: scaleY(1); }
 }
 
+@keyframes gradient-shift {
+  0% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+  100% { background-position: 0% 50%; }
+}
+
 .animate-float-up {
   animation: float-up 3s ease-out forwards;
+}
+
+.text-gradient {
+  background: linear-gradient(135deg, #34d399, #10b981, #059669);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+.text-gradient-moving {
+  background: linear-gradient(270deg, #34d399, #10b981, #6ee7b7, #34d399, #059669);
+  background-size: 400% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: gradient-shift 4s ease infinite;
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #059669, #10b981, #34d399) !important;
+  background-size: 200% 100% !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-primary:hover {
+  background-position: 100% 0 !important;
+  transform: scale(1.02);
+}
+
+.btn-primary:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.btn-amber {
+  background: linear-gradient(135deg, #d97706, #f59e0b, #fbbf24) !important;
+  background-size: 200% 100% !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-amber:hover {
+  background-position: 100% 0 !important;
+  transform: scale(1.02);
+}
+
+.btn-rose {
+  background: linear-gradient(135deg, #e11d48, #f43f5e, #fb7185) !important;
+  background-size: 200% 100% !important;
+  transition: all 0.3s ease !important;
+}
+
+.btn-rose:hover {
+  background-position: 100% 0 !important;
+  transform: scale(1.02);
 }

@@ -249,14 +249,14 @@ export default function ClientPage() {
           <button onClick={handleLogout} className="absolute top-4 right-4 text-muted hover:text-fg transition-colors">
             <LogOut className="w-5 h-5" />
           </button>
-          <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-lg">
+          <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg">
             <Radio className="w-10 h-10 text-white" />
           </div>
-          <h1 className="text-2xl font-bold mb-1">Music Sync</h1>
+          <h1 className="text-2xl font-bold mb-1 text-gradient-moving">Music Sync</h1>
           <p className="text-muted text-sm mb-8">Join a synchronized listening session</p>
           <button
             onClick={handleJoin}
-            className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-semibold py-3 px-8 rounded-xl transition-all duration-200 hover:scale-[1.02] active:scale-95 shadow-lg"
+            className="w-full btn-primary text-white font-semibold py-3 px-8 rounded-xl shadow-lg"
           >
             Join Session
           </button>
@@ -277,10 +277,10 @@ export default function ClientPage() {
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center animate-pulse">
               <Radio className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-lg font-semibold mb-2">Connecting...</h2>
+            <h2 className="text-lg font-semibold mb-2 text-gradient">Connecting...</h2>
             <p className="text-sm text-muted">Establishing synchronized session</p>
             <div className="mt-4 w-48 h-1.5 mx-auto bg-slate-700/50 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-amber-400 to-emerald-400 rounded-full animate-pulse" style={{ width: "40%" }} />
+              <div className="h-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600 rounded-full animate-pulse" style={{ width: "40%" }} />
             </div>
           </div>
         )}
@@ -290,7 +290,7 @@ export default function ClientPage() {
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-slate-400 to-slate-600 flex items-center justify-center">
               <Headphones className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-lg font-semibold mb-1">Session Connected</h2>
+            <h2 className="text-lg font-semibold mb-1 text-gradient">Session Connected</h2>
             <p className="text-xs text-muted mb-2">Latency: ~{latency}ms</p>
             <div className="flex items-center justify-center gap-1.5 mb-4">
               <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
@@ -305,11 +305,11 @@ export default function ClientPage() {
             <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center animate-pulse">
               <Music className="w-8 h-8 text-white" />
             </div>
-            <h2 className="text-lg font-semibold mb-1">{phase === "preparing" ? "Preparing..." : "Paused"}</h2>
+            <h2 className="text-lg font-semibold mb-1 text-gradient">{phase === "preparing" ? "Preparing..." : "Paused"}</h2>
             {trackTitle && <p className="text-amber-400 font-medium">{trackTitle}</p>}
             {phase === "preparing" && (
               <div className="mt-4 w-48 h-1.5 mx-auto bg-slate-700/50 rounded-full overflow-hidden">
-                <div className="h-full bg-amber-400 rounded-full animate-pulse" style={{ width: "60%" }} />
+                <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full animate-pulse" style={{ width: "60%" }} />
               </div>
             )}
           </div>
@@ -317,10 +317,10 @@ export default function ClientPage() {
 
         {phase === "playing" && (
           <div className="py-6">
-            <div className="w-24 h-24 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-lg">
+            <div className="w-24 h-24 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg">
               <Music className="w-12 h-12 text-white" />
             </div>
-            {trackTitle && <h2 className="text-lg font-semibold mb-3">{trackTitle}</h2>}
+            {trackTitle && <h2 className="text-lg font-semibold mb-3 text-gradient-moving">{trackTitle}</h2>}
             <canvas ref={canvasRef} width={320} height={64} className="w-full h-16 rounded-lg mb-4" />
             <div className="flex items-center justify-center gap-3 mb-4">
               <Volume2 className="w-4 h-4 text-muted" />
@@ -337,7 +337,7 @@ export default function ClientPage() {
             </div>
             <button
               onClick={handleReact}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-rose-500 to-pink-500 hover:from-rose-400 hover:to-pink-400 text-white font-medium px-6 py-2 rounded-full transition-all duration-200 hover:scale-105 active:scale-95 shadow-lg"
+              className="inline-flex items-center gap-2 btn-rose text-white font-medium px-6 py-2 rounded-full shadow-lg"
             >
               <Heart className="w-4 h-4" /> React
             </button>
