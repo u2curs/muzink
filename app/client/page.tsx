@@ -46,6 +46,14 @@ export default function ClientPage() {
     }
   }, [volume]);
 
+  function stopSource() {
+    if (sourceRef.current) {
+      try { sourceRef.current.stop(); } catch {}
+      try { sourceRef.current.disconnect(); } catch {}
+      sourceRef.current = null;
+    }
+  }
+
   useEffect(() => {
     if (gainRef.current) gainRef.current.gain.value = volume;
   }, [volume]);
@@ -93,98 +101,109 @@ export default function ClientPage() {
       const { track, title } = payload.payload;
       setTrackTitle(title || "Unknown Track");
       setPhase("preparing");
-      if (audioCtxRef.current) {
-        audioCtxRef.current.close();
-        audioCtxRef.current = null;
-        gainRef.current = null;
-        analyserRef.current = null;
-      }
+      stopSource();
     });
 
     channel.on("broadcast", { event: "PLAY" }, async (payload: any) => {
       const { track, title, start_time, position } = payload.payload;
       setTrackTitle(title || "Unknown Track");
+      if (!track) return;
       try {
         initAudio();
         const ctx = audioCtxRef.current!;
         if (ctx.state === "suspended") await ctx.resume();
+        stopSource();
         const resp = await fetch(track);
+        if (!resp.ok) throw new Error("Fetch failed: " + resp.status);
         const buf = await resp.arrayBuffer();
         const audioBuf = await ctx.decodeAudioData(buf);
-        if (sourceRef.current) { sourceRef.current.stop(); sourceRef.current.disconnect(); }
         const src = ctx.createBufferSource();
         src.buffer = audioBuf;
         src.connect(gainRef.current!);
         sourceRef.current = src;
         const serverNow = getServerTime();
         const delayMs = start_time - serverNow;
-        const delaySec = delayMs / 1000;
-        src.start(ctx.currentTime + Math.max(0, delaySec), position || 0);
+        const delaySec = Math.max(0, delayMs / 1000);
+        src.start(ctx.currentTime + delaySec, position || 0);
         setPhase("playing");
-      } catch (e) { console.error("Playback error", e); setPhase("waiting"); }
+      } catch (e) {
+        console.error("Playback error:", e);
+        setPhase("waiting");
+      }
     });
 
-    channel.on("broadcast", { event: "PAUSE" }, (payload: any) => {
-      if (sourceRef.current) { try { sourceRef.current.stop(); } catch {} sourceRef.current.disconnect(); sourceRef.current = null; }
+    channel.on("broadcast", { event: "PAUSE" }, () => {
+      stopSource();
       setPhase("paused");
     });
 
     channel.on("broadcast", { event: "STOP" }, () => {
-      if (sourceRef.current) { try { sourceRef.current.stop(); } catch {} sourceRef.current.disconnect(); sourceRef.current = null; }
-      setPhase("waiting"); setTrackTitle("");
+      stopSource();
+      setPhase("waiting");
+      setTrackTitle("");
     });
 
     channel.on("broadcast", { event: "STATE" }, async (payload: any) => {
       const { track, title, start_time, position, is_paused } = payload.payload;
+      if (!track) return;
       if (is_paused) {
-        setTrackTitle(title || ""); initAudio();
-        if (audioCtxRef.current) {
-          const resp = await fetch(track); const buf = await resp.arrayBuffer();
-          const audioBuf = await audioCtxRef.current.decodeAudioData(buf);
-          const src = audioCtxRef.current.createBufferSource();
-          src.buffer = audioBuf; src.connect(gainRef.current!);
-          src.start(0, position || 0); src.stop(); setPhase("paused");
-        }
-      } else { await handleLateJoin(track, title, start_time, position); }
+        setTrackTitle(title || "");
+        setPhase("paused");
+      } else {
+        await playTrack(track, title, start_time, position || 0);
+      }
     });
 
     channel.subscribe(async (status: string) => {
       if (status !== "SUBSCRIBED") return;
       const presence = channel.presenceState();
-      let adminState: any = null;
+      let admin: any = null;
       for (const key of Object.keys(presence)) {
         for (const p of presence[key] as any[]) {
-          if (p.type === "admin") { adminState = p; break; }
+          if (p.type === "admin") { admin = p; break; }
         }
-        if (adminState) break;
+        if (admin) break;
       }
-      if (adminState?.state === "playing" && adminState.track) {
-        await handleLateJoin(adminState.track, adminState.title || "", adminState.start_time || 0, adminState.position || 0);
-      } else if (adminState?.state === "paused" && adminState.track) {
-        setTrackTitle(adminState.title || ""); setPhase("paused");
-      } else if (adminState?.state === "preparing") {
-        setTrackTitle(adminState.title || ""); setPhase("preparing");
-      } else { setPhase("waiting"); }
+      if (admin?.state === "playing" && admin.track) {
+        await playTrack(admin.track, admin.title || "", admin.start_time || 0, admin.position || 0);
+      } else if (admin?.state === "paused") {
+        setTrackTitle(admin.title || "");
+        setPhase("paused");
+      } else if (admin?.state === "preparing") {
+        setTrackTitle(admin.title || "");
+        setPhase("preparing");
+      } else {
+        setPhase("waiting");
+      }
     });
 
     setPhase("waiting");
   }
 
-  async function handleLateJoin(track: string, title: string, startTime: number, position: number) {
-    setTrackTitle(title || ""); setPhase("preparing");
+  async function playTrack(track: string, title: string, startTime: number, position: number) {
+    setTrackTitle(title || "");
+    setPhase("preparing");
     try {
-      initAudio(); const ctx = audioCtxRef.current!;
+      initAudio();
+      const ctx = audioCtxRef.current!;
       if (ctx.state === "suspended") await ctx.resume();
-      const resp = await fetch(track); const buf = await resp.arrayBuffer();
+      const resp = await fetch(track);
+      if (!resp.ok) throw new Error("Fetch failed: " + resp.status);
+      const buf = await resp.arrayBuffer();
       const audioBuf = await ctx.decodeAudioData(buf);
-      if (sourceRef.current) { try { sourceRef.current.stop(); } catch {} sourceRef.current.disconnect(); }
+      stopSource();
       const src = ctx.createBufferSource();
-      src.buffer = audioBuf; src.connect(gainRef.current!);
+      src.buffer = audioBuf;
+      src.connect(gainRef.current!);
       sourceRef.current = src;
       const elapsed = (getServerTime() - startTime) / 1000;
-      src.start(0, Math.max(0, (position || 0) + elapsed));
+      const seekTo = Math.max(0, (position || 0) + elapsed);
+      src.start(0, seekTo);
       setPhase("playing");
-    } catch (e) { console.error("Late join error", e); setPhase("waiting"); }
+    } catch (e) {
+      console.error("playTrack error:", e);
+      setPhase("waiting");
+    }
   }
 
   function handleReact() {
@@ -196,7 +215,8 @@ export default function ClientPage() {
 
   function handleLogout() {
     if (audioCtxRef.current) audioCtxRef.current.close();
-    localStorage.removeItem("music-sync-role"); router.push("/");
+    localStorage.removeItem("music-sync-role");
+    router.push("/");
   }
 
   if (phase === "join") {
@@ -242,7 +262,7 @@ export default function ClientPage() {
             </div>
             <h2 className="text-lg font-semibold mb-2 text-gradient">Connecting...</h2>
             <p className="text-sm text-muted">Establishing synchronized session</p>
-            <div className="mt-4 w-48 h-1.5 mx-auto bg-white/10 rounded-full overflow-hidden">
+            <div className="mt-4 w-full max-w-[200px] h-1.5 mx-auto bg-white/10 rounded-full overflow-hidden">
               <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full animate-pulse" style={{ width: "40%" }} />
             </div>
           </div>
@@ -272,7 +292,7 @@ export default function ClientPage() {
             {trackTitle && <p className="text-emerald-400 font-medium">{trackTitle}</p>}
             {phase === "preparing" && (
               <div className="mt-4 w-48 h-1.5 mx-auto bg-white/10 rounded-full overflow-hidden">
-                <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full animate-pulse" style={{ width: "60%" }} />
+                <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full loading-bar" />
               </div>
             )}
           </div>
