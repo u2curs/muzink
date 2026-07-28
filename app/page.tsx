@@ -2,13 +2,15 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Music, Shield, User } from "lucide-react";
+import { Music, Shield, User, Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
 
 const ADMIN_USERNAME = "u2curs";
 const ADMIN_PASSWORD = "AbCdE123#@$";
 
 export default function LoginPage() {
   const router = useRouter();
+  const { theme, setTheme } = useTheme();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [role, setRole] = useState<"admin" | "user" | null>(null);
@@ -37,51 +39,52 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center p-6">
-      <div className="bg-slate-800 rounded-2xl p-10 shadow-2xl border border-slate-700 text-center max-w-md w-full">
-        <Music className="w-14 h-14 text-emerald-400 mx-auto mb-4" />
+    <div className="flex-1 flex items-center justify-center p-4 relative">
+      <button
+        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        className="absolute top-4 right-4 text-muted hover:text-fg transition-colors p-2 rounded-xl hover:bg-white/5"
+      >
+        {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
+      </button>
+
+      <div className="glass rounded-3xl p-10 shadow-2xl text-center max-w-md w-full">
+        <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-emerald-400 to-emerald-600 flex items-center justify-center shadow-lg">
+          <Music className="w-8 h-8 text-white" />
+        </div>
         <h1 className="text-2xl font-bold mb-1">Music Sync Player</h1>
-        <p className="text-slate-400 text-sm mb-8">Choose your role to continue</p>
+        <p className="text-muted text-sm mb-8">Choose your role to continue</p>
 
         <form onSubmit={handleAdminLogin} className="mb-6">
-          <h2 className="text-left text-sm font-semibold text-slate-300 mb-3 flex items-center gap-2">
-            <Shield className="w-4 h-4" /> Admin Login
+          <h2 className="text-left text-sm font-semibold mb-3 flex items-center gap-2">
+            <Shield className="w-4 h-4 text-emerald-400" /> Admin Login
           </h2>
           <input
-            type="text"
-            placeholder="Username"
-            value={username}
+            type="text" placeholder="Username" value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full bg-slate-700 text-slate-100 rounded-lg px-4 py-2 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-2"
+            className="w-full bg-white/10 text-fg rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 mb-2 placeholder:text-muted/60"
           />
           <input
-            type="password"
-            placeholder="Password"
-            value={password}
+            type="password" placeholder="Password" value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full bg-slate-700 text-slate-100 rounded-lg px-4 py-2 border border-slate-600 focus:outline-none focus:ring-2 focus:ring-emerald-500 mb-2"
+            className="w-full bg-white/10 text-fg rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 mb-2 placeholder:text-muted/60"
           />
           {error && <p className="text-red-400 text-sm text-left mb-2">{error}</p>}
           <button
             type="submit"
-            className="w-full bg-emerald-600 hover:bg-emerald-500 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
+            className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-semibold py-2.5 px-4 rounded-xl transition-all duration-200 hover:scale-[1.01] active:scale-95 shadow-lg"
           >
             Login as Admin
           </button>
         </form>
 
         <div className="relative mb-6">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-slate-700" />
-          </div>
-          <div className="relative flex justify-center text-xs text-slate-500">
-            <span className="bg-slate-800 px-2">or</span>
-          </div>
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10" /></div>
+          <div className="relative flex justify-center text-xs text-muted"><span className="px-2 bg-transparent">or</span></div>
         </div>
 
         <button
           onClick={handleUserLogin}
-          className="w-full flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white font-semibold py-2 px-4 rounded-lg transition-colors border border-slate-600"
+          className="w-full flex items-center justify-center gap-2 glass-strong hover:bg-white/15 text-fg font-semibold py-2.5 px-4 rounded-xl transition-all duration-200 hover:scale-[1.01] active:scale-95"
         >
           <User className="w-4 h-4" /> Login as User
         </button>
