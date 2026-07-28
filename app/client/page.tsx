@@ -30,8 +30,6 @@ export default function ClientPage() {
   const targetTimeRef = useRef(0);
   const contextTargetTimeRef = useRef(0);
   const pausePositionRef = useRef(0);
-  const phaseRef = useRef(phase);
-  phaseRef.current = phase;
 
   useEffect(() => {
     const role = localStorage.getItem("music-sync-role");

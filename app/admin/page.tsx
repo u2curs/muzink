@@ -37,6 +37,10 @@ export default function AdminPage() {
   const playStartRef = useRef(0);
   const pausePositionRef = useRef(0);
   const targetTimeRef = useRef(0);
+  const activeTrackRef = useRef(activeTrack);
+  activeTrackRef.current = activeTrack;
+  const phaseRef = useRef(phase);
+  phaseRef.current = phase;
 
   useEffect(() => {
     const role = localStorage.getItem("music-sync-role");
@@ -56,13 +60,15 @@ export default function AdminPage() {
     channelRef.current = channel;
 
     channel.on("broadcast", { event: "REQUEST_STATE" }, () => {
-      if (activeTrack && (phase === "playing" || phase === "paused" || phase === "waiting_ready")) {
+      const t = activeTrackRef.current;
+      const p = phaseRef.current;
+      if (t && (p === "playing" || p === "paused" || p === "waiting_ready")) {
         channel.send({
           type: "broadcast", event: "STATE", payload: {
-            track: activeTrack.file_url, title: activeTrack.title,
+            track: t.file_url, title: t.title,
             start_time: playStartRef.current,
-            position: phase === "playing" ? Math.max(0, (getServerTime() - playStartRef.current) / 1000) : pausePositionRef.current,
-            is_paused: phase === "paused",
+            position: p === "playing" ? Math.max(0, (getServerTime() - playStartRef.current) / 1000) : pausePositionRef.current,
+            is_paused: p === "paused",
           },
         });
       }
