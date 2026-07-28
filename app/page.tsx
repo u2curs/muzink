@@ -38,44 +38,57 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex-1 flex items-center justify-center p-4 relative transition-theme">
+    <div className="flex-1 flex items-center justify-center p-6 relative transition-theme">
       <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        className="absolute top-4 right-4 text-muted hover:text-fg transition-all duration-300 p-2 rounded-xl hover:bg-white/10">
+        className="absolute top-6 right-6 text-muted hover:text-main transition-all duration-300 p-3 rounded-xl hover:bg-accent-soft spring-btn"
+        style={{ transitionTimingFunction: "var(--spring)" }}>
         {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
       </button>
 
-      <div className="glass rounded-3xl p-10 text-center max-w-md w-full">
-        <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center">
-          <Music className="w-8 h-8 text-white" />
+      <div className="glass-card p-12 text-center max-w-md w-full" style={{ borderRadius: "32px" }}>
+        <div className="w-14 h-14 mx-auto mb-6 rounded-2xl flex items-center justify-center"
+          style={{ background: "linear-gradient(135deg, var(--accent), var(--accent2))" }}>
+          <Music className="w-7 h-7 text-white" />
         </div>
-        <h1 className="text-2xl font-bold mb-1 text-gradient-moving">Music Sync Player</h1>
-        <p className="text-muted text-sm mb-8">Choose your role to continue</p>
 
-        <form onSubmit={handleAdminLogin} className="mb-6">
-          <h2 className="text-left text-sm font-semibold mb-3 flex items-center gap-2">
-            <Shield className="w-4 h-4 text-emerald-400" /> Admin Login
+        <h1 className="font-serif text-4xl font-bold mb-2 text-gradient-moving" style={{ letterSpacing: "-0.03em", lineHeight: 1.1 }}>
+          Music Sync
+        </h1>
+        <p className="text-muted text-sm mb-10" style={{ lineHeight: 1.65 }}>
+          Synchronized listening, anywhere
+        </p>
+
+        <form onSubmit={handleAdminLogin} className="mb-8">
+          <h2 className="text-left text-xs font-semibold mb-4 flex items-center gap-2 text-muted uppercase tracking-wider">
+            <Shield className="w-3.5 h-3.5" /> Admin Login
           </h2>
           <input type="text" placeholder="Username" value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full bg-white/10 text-fg rounded-xl px-4 py-2.5 text-sm border border-white/5 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 mb-2 placeholder:text-muted/50 transition-all duration-300" />
+            className="w-full bg-surface text-main rounded-xl px-4 py-3 text-sm border border-subtle focus:outline-none focus:ring-2 mb-3 placeholder:text-subtle transition-all duration-300"
+            style={{ boxShadow: "var(--shadow-sm)", borderRadius: "12px", "--tw-ring-color": "var(--accent-soft)" } as React.CSSProperties} />
           <input type="password" placeholder="Password" value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full bg-white/10 text-fg rounded-xl px-4 py-2.5 text-sm border border-white/5 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 mb-2 placeholder:text-muted/50 transition-all duration-300" />
-          {error && <p className="text-red-400 text-sm text-left mb-2">{error}</p>}
+            className="w-full bg-surface text-main rounded-xl px-4 py-3 text-sm border border-subtle focus:outline-none focus:ring-2 mb-3 placeholder:text-subtle transition-all duration-300"
+            style={{ boxShadow: "var(--shadow-sm)", borderRadius: "12px", "--tw-ring-color": "var(--accent-soft)" } as React.CSSProperties} />
+          {error && <p className="text-red-400 text-sm text-left mb-3">{error}</p>}
           <button type="submit"
-            className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-semibold py-2.5 px-4 rounded-xl transition-all duration-300 hover:scale-[1.01] active:scale-95">
+            className="spring-btn w-full text-white font-semibold py-3 px-4 rounded-xl transition-all"
+            style={{ background: "linear-gradient(135deg, var(--accent), var(--accent2))", borderRadius: "12px" }}>
             Login as Admin
           </button>
         </form>
 
-        <div className="relative mb-6">
-          <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10" /></div>
-          <div className="relative flex justify-center text-xs"><span className="px-2 bg-transparent text-gradient-moving font-semibold">or</span></div>
+        <div className="relative mb-8">
+          <div className="absolute inset-0 flex items-center"><div className="w-full border-t" style={{ borderColor: "var(--border-subtle)" }} /></div>
+          <div className="relative flex justify-center text-xs">
+            <span className="px-3 text-muted font-medium" style={{ background: "var(--glass-bg)" }}>or continue as</span>
+          </div>
         </div>
 
         <button onClick={handleUserLogin}
-          className="w-full flex items-center justify-center gap-2 glass-strong hover:bg-emerald-500/10 text-fg font-semibold py-2.5 px-4 rounded-xl transition-all duration-300 hover:scale-[1.01] active:scale-95 border border-emerald-500/20 hover:border-emerald-500/40">
-          <User className="w-4 h-4" /> Login as User
+          className="spring-btn w-full flex items-center justify-center gap-2 font-semibold py-3 px-4 rounded-xl transition-all border"
+          style={{ borderRadius: "12px", borderColor: "var(--border-default)", color: "var(--text-main)", background: "var(--bg-surface)", boxShadow: "var(--shadow-sm)" }}>
+          <User className="w-4 h-4" /> Listener
         </button>
       </div>
     </div>

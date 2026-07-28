@@ -139,9 +139,7 @@ export default function AdminPage() {
   }
 
   function handleSelectTrack(track: Track) {
-    if (phase === "playing" || phase === "paused") {
-      handleStop();
-    }
+    if (phase === "playing" || phase === "paused") handleStop();
     setActiveTrack(track);
     setReadyClients(new Set());
     setPhase("waiting_ready");
@@ -153,21 +151,14 @@ export default function AdminPage() {
     targetTimeRef.current = targetTime;
     playStartRef.current = targetTime;
     setCountdown(100);
-
     if (countdownRef.current) clearInterval(countdownRef.current);
     countdownRef.current = setInterval(() => {
       const remaining = Math.max(0, targetTime - getServerTime());
       const pct = (remaining / 2000) * 100;
       setCountdown(pct);
-      if (remaining <= 0) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
-        setCountdown(0);
-      }
+      if (remaining <= 0) { clearInterval(countdownRef.current); countdownRef.current = null; setCountdown(0); }
     }, 16);
-
     setPhase("countdown");
-
     setTimeout(async () => {
       setPhase("playing");
       await supabase.channel("audio-sync").send({
@@ -193,20 +184,13 @@ export default function AdminPage() {
     targetTimeRef.current = targetTime;
     playStartRef.current = targetTime;
     setCountdown(100);
-
     if (countdownRef.current) clearInterval(countdownRef.current);
     countdownRef.current = setInterval(() => {
       const remaining = Math.max(0, targetTime - getServerTime());
       setCountdown((remaining / 2000) * 100);
-      if (remaining <= 0) {
-        clearInterval(countdownRef.current);
-        countdownRef.current = null;
-        setCountdown(0);
-      }
+      if (remaining <= 0) { clearInterval(countdownRef.current); countdownRef.current = null; setCountdown(0); }
     }, 16);
-
     setPhase("countdown");
-
     setTimeout(async () => {
       setPhase("playing");
       await supabase.channel("audio-sync").send({
@@ -227,19 +211,17 @@ export default function AdminPage() {
 
   function handleSkip(index: number) {
     if (tracks.length === 0) return;
-    const nextIdx = (index + 1) % tracks.length;
-    const next = tracks[nextIdx];
-    handleSelectTrack(next);
+    handleSelectTrack(tracks[(index + 1) % tracks.length]);
   }
 
   function handleLogout() { stopPeriodicSync(); localStorage.removeItem("music-sync-role"); router.push("/"); }
 
   if (envMissing) {
     return (
-      <div className="flex-1 flex items-center justify-center p-6">
-        <div className="glass rounded-2xl p-8 text-center max-w-md">
-          <h1 className="text-xl font-bold mb-2 text-gradient-moving">Configuration Required</h1>
-          <p className="text-muted">Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local</p>
+      <div className="flex-1 flex items-center justify-center p-6 transition-theme">
+        <div className="glass-card p-10 text-center max-w-md" style={{ borderRadius: "32px" }}>
+          <h1 className="font-serif text-2xl font-bold mb-2 text-gradient-moving">Configuration Required</h1>
+          <p className="text-muted text-sm" style={{ lineHeight: "1.65" }}>Set NEXT_PUBLIC_SUPABASE_URL and NEXT_PUBLIC_SUPABASE_ANON_KEY in .env.local</p>
         </div>
       </div>
     );
@@ -251,81 +233,113 @@ export default function AdminPage() {
 
   return (
     <div className="flex-1 flex flex-col min-h-screen transition-theme">
-      <header className="glass-strong px-6 py-3 flex items-center justify-between shrink-0 z-30">
-        <div className="flex items-center gap-3">
-          <button onClick={() => setDrawerOpen(!drawerOpen)} className="text-muted hover:text-fg transition-colors p-1.5 rounded-xl hover:bg-white/10">
+      <header className="glass-strong px-8 py-4 flex items-center justify-between shrink-0 z-30">
+        <div className="flex items-center gap-4">
+          <button onClick={() => setDrawerOpen(!drawerOpen)}
+            className="spring-btn text-muted hover:text-main p-2 rounded-xl hover:bg-accent-soft"
+            style={{ borderRadius: "10px", transitionTimingFunction: "var(--spring)" }}>
             <List className="w-5 h-5" />
           </button>
-          <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center">
+          <div className="w-10 h-10 rounded-2xl flex items-center justify-center"
+            style={{ background: "linear-gradient(135deg, var(--accent), var(--accent2))", borderRadius: "12px" }}>
             <Music className="w-5 h-5 text-white" />
           </div>
-          <h1 className="font-bold text-gradient-moving text-lg">Admin Dashboard</h1>
-          <span className="text-xs text-muted ml-2 flex items-center gap-1">
-            <span className={`w-1.5 h-1.5 rounded-full ${offset !== 0 ? "bg-emerald-400" : "bg-amber-400"} animate-pulse`} />
+          <h1 className="font-serif font-bold text-lg text-gradient-moving">Admin</h1>
+          <span className="text-xs flex items-center gap-1.5 px-3 py-1.5 rounded-full"
+            style={{ background: "var(--accent-soft)", color: "var(--accent)" }}>
+            <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
             {Math.abs(offset)}ms
           </span>
         </div>
         <div className="flex items-center gap-2">
           <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-            className="p-2 rounded-xl text-muted hover:text-fg transition-all duration-300 hover:bg-white/10">
+            className="spring-btn p-2.5 rounded-xl text-muted hover:text-main hover:bg-accent-soft"
+            style={{ borderRadius: "10px", transitionTimingFunction: "var(--spring)" }}>
             {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
           </button>
           <button onClick={handleLogout}
-            className="p-2 rounded-xl text-muted hover:text-red-400 transition-all duration-300 hover:bg-white/10">
+            className="spring-btn p-2.5 rounded-xl text-muted hover:text-red-400 hover:bg-red-500/10"
+            style={{ borderRadius: "10px", transitionTimingFunction: "var(--spring)" }}>
             <LogOut className="w-4 h-4" />
           </button>
         </div>
       </header>
 
-      <div className={`fixed left-0 top-[57px] bottom-20 w-72 z-20 glass transition-transform duration-300 ease-in-out border-r ${drawerOpen ? "translate-x-0" : "-translate-x-full"}`}>
-        <div className="p-4 h-full flex flex-col">
-          <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
+      <div className={`fixed left-0 top-[65px] bottom-24 w-72 z-20 bg-surface border-r drawer-slide`}
+        style={{ borderColor: "var(--border-subtle)", transitionTimingFunction: "var(--spring)", transform: drawerOpen ? "translateX(0)" : "translateX(-100%)" }}>
+        <div className="p-5 h-full flex flex-col">
+          <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-4 flex items-center gap-2">
             <Disc className="w-3.5 h-3.5" /> Tracks
           </h2>
-          <div className="flex-1 overflow-y-auto space-y-1">
+          <div className="flex-1 overflow-y-auto space-y-1.5 -mx-1 px-1">
             {tracks.length === 0 ? (
-              <p className="text-xs text-muted text-center py-8">No tracks yet.</p>
+              <p className="text-xs text-muted text-center py-10">No tracks yet.</p>
             ) : (
               tracks.map((track) => {
                 const isActiveT = activeTrack?.id === track.id;
                 return (
                   <button key={track.id} onClick={() => handleSelectTrack(track)}
-                    className={`w-full text-left px-3 py-2.5 rounded-xl text-sm transition-all duration-200 ${
-                      isActiveT ? "bg-emerald-500/15 text-emerald-400 font-medium" : "hover:bg-white/10 text-fg"
-                    }`}>
-                    <div className="flex items-center gap-2.5">
-                      <Music className="w-4 h-4 shrink-0" />
-                      <span className="truncate">{track.title}</span>
-                      {isActiveT && (phase === "playing" || phase === "countdown") && <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse shrink-0" />}
+                    className="spring-btn w-full text-left px-4 py-3 text-sm transition-all"
+                    style={{
+                      borderRadius: "12px",
+                      background: isActiveT ? "var(--accent-soft)" : "transparent",
+                      color: isActiveT ? "var(--accent)" : "var(--text-main)",
+                      transitionTimingFunction: "var(--spring)",
+                    }}>
+                    <div className="flex items-center gap-3">
+                      <Music className="w-4 h-4 shrink-0" style={{ opacity: isActiveT ? 1 : 0.4 }} />
+                      <span className="truncate font-medium">{track.title}</span>
+                      {isActiveT && (phase === "playing" || phase === "countdown") && (
+                        <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse shrink-0" />
+                      )}
                     </div>
                   </button>
                 );
               })
             )}
           </div>
-          <div className="mt-3 pt-3 border-t border-white/10">
-            <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-2 flex items-center gap-2">
+          <div className="mt-4 pt-4" style={{ borderTop: "1px solid var(--border-subtle)" }}>
+            <h3 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
               <Upload className="w-3.5 h-3.5" /> Upload
             </h3>
-            <input type="text" placeholder="Title" value={title} onChange={(e) => setTitle(e.target.value)}
-              className="w-full bg-white/10 text-fg rounded-xl px-3 py-2 text-xs border border-white/5 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 mb-2 placeholder:text-muted/50" />
+            <input type="text" placeholder="Track title" value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="w-full text-main rounded-xl px-4 py-2.5 text-sm border mb-2.5 placeholder:text-subtle focus:outline-none focus:ring-2 transition-all"
+              style={{
+                background: "var(--bg-base)",
+                borderColor: "var(--border-subtle)",
+                borderRadius: "10px",
+                "--tw-ring-color": "var(--accent-soft)",
+              } as React.CSSProperties} />
             <input ref={fileRef} type="file" accept="audio/*"
-              className="w-full text-xs text-muted mb-2 file:mr-2 file:py-1 file:px-2.5 file:rounded-xl file:border-0 file:bg-emerald-500/15 file:text-emerald-400 file:font-medium file:text-xs file:cursor-pointer" />
+              className="w-full text-xs text-muted mb-2.5 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:font-medium file:text-xs file:cursor-pointer spring-btn"
+              style={{ "--tw-ring-color": "var(--accent-soft)" } as React.CSSProperties} />
             <button onClick={handleUpload} disabled={uploading || !title || !fileRef.current?.files?.length}
-              className="w-full bg-gradient-to-r from-emerald-500 to-emerald-600 text-white text-xs font-medium py-2 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed">
+              className="spring-btn w-full text-white text-xs font-medium py-2.5 rounded-xl flex items-center justify-center gap-1.5 disabled:opacity-40 disabled:cursor-not-allowed"
+              style={{
+                background: "linear-gradient(135deg, var(--accent), var(--accent2))",
+                borderRadius: "10px",
+                transitionTimingFunction: "var(--spring)",
+              }}>
               <Upload className="w-3 h-3" /> {uploading ? "Uploading..." : "Upload"}
             </button>
           </div>
         </div>
       </div>
 
-      <div className={`flex-1 p-6 transition-all duration-300 ${drawerOpen ? "ml-72" : "ml-0"}`}>
-        <div className="max-w-4xl mx-auto space-y-6">
-          <div className="glass rounded-2xl p-6">
-            <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
+      <div className="flex-1 p-8 transition-all drawer-slide"
+        style={{ marginLeft: drawerOpen ? "18rem" : "0", transitionTimingFunction: "var(--spring)" }}>
+        <div className="max-w-4xl mx-auto space-y-8">
+          <div className="glass-card p-8" style={{ borderRadius: "24px" }}>
+            <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-4 flex items-center gap-2">
               <Heart className="w-3.5 h-3.5" /> Live Reactions
             </h2>
-            <div className="relative h-48 rounded-xl bg-gradient-to-b from-white/[0.03] to-transparent border border-white/[0.04] overflow-hidden">
+            <div className="relative h-48 rounded-2xl overflow-hidden"
+              style={{
+                background: "linear-gradient(180deg, var(--accent-soft) 0%, transparent 100%)",
+                border: "1px solid var(--border-subtle)",
+                borderRadius: "16px",
+              }}>
               {reactions.length === 0 ? (
                 <div className="absolute inset-0 flex items-center justify-center text-muted/40 text-sm">Waiting for listener reactions...</div>
               ) : (
@@ -336,61 +350,63 @@ export default function AdminPage() {
             </div>
           </div>
 
-          <div className="glass rounded-2xl p-6">
-            <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-3 flex items-center gap-2">
+          <div className="glass-card p-8" style={{ borderRadius: "24px" }}>
+            <h2 className="text-xs font-semibold text-muted uppercase tracking-wider mb-4 flex items-center gap-2">
               <Radio className="w-3.5 h-3.5" /> Devices
             </h2>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-4">
               {readyCount > 0 ? (
-                <span className="text-emerald-400 font-semibold text-lg">{readyCount} ready</span>
+                <span className="font-semibold text-lg" style={{ color: "var(--accent2)" }}>{readyCount} ready</span>
               ) : (
                 <span className="text-muted text-sm">No devices connected</span>
               )}
               {phase === "waiting_ready" && (
-                <span className="text-xs text-muted animate-pulse">Waiting for devices to buffer...</span>
+                <span className="text-xs text-muted animate-pulse flex items-center gap-2">
+                  <span className="w-1 h-1 rounded-full bg-current" />
+                  Waiting for devices to buffer...
+                </span>
               )}
             </div>
           </div>
 
           {!activeTrack && (
-            <div className="glass rounded-2xl p-10 text-center">
-              <Music className="w-12 h-12 text-muted/30 mx-auto mb-3" />
+            <div className="glass-card p-12 text-center" style={{ borderRadius: "24px" }}>
+              <Music className="w-12 h-12 mx-auto mb-4" style={{ opacity: 0.2 }} />
               <h2 className="text-lg font-semibold mb-1">No Track Selected</h2>
-              <p className="text-sm text-muted">Select a track from the drawer or upload a new one</p>
+              <p className="text-sm text-muted" style={{ lineHeight: "1.65" }}>Select a track from the drawer or upload a new one</p>
             </div>
           )}
         </div>
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 z-30 glass-strong border-t border-white/10 px-6 py-3 flex items-center justify-between transition-all duration-300">
+      <div className="fixed bottom-0 left-0 right-0 z-30 glass-strong px-8 py-4 flex items-center justify-between"
+        style={{ borderTop: "1px solid var(--border-subtle)" }}>
         <div className="flex items-center gap-4 min-w-0">
           {activeTrack ? (
             <>
-              <div className="w-11 h-11 rounded-xl bg-gradient-to-br from-emerald-400/30 via-emerald-500/30 to-emerald-600/30 flex items-center justify-center shrink-0">
-                <Music className="w-5 h-5 text-emerald-400" />
+              <div className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+                style={{ background: "linear-gradient(135deg, var(--accent-soft), var(--accent2-soft))", borderRadius: "14px" }}>
+                <Music className="w-5 h-5" style={{ color: "var(--accent)" }} />
               </div>
               <div className="min-w-0">
                 <p className="text-sm font-semibold truncate">{activeTrack.title}</p>
-                <p className="text-xs text-muted">
+                <p className="text-xs" style={{ color: "var(--text-muted)" }}>
                   {phase === "waiting_ready" ? "Buffering..." : phase === "countdown" ? "Starting..." : phase === "playing" ? "Playing" : phase === "paused" ? "Paused" : "Ready"}
                 </p>
               </div>
             </>
           ) : (
-            <p className="text-sm text-muted">No track selected</p>
+            <p className="text-sm" style={{ color: "var(--text-muted)" }}>No track selected</p>
           )}
         </div>
 
         <div className="flex items-center gap-3">
           {countdown > 0 && phase === "countdown" && (
-            <div className="countdown-active w-9 h-9 rounded-full flex items-center justify-center">
-              <svg className="w-9 h-9 -rotate-90" viewBox="0 0 32 32">
-                <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" strokeWidth="2" className="text-white/10" />
-                <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" strokeWidth="2"
-                  className="text-emerald-400"
-                  strokeDasharray={circumference}
-                  strokeDashoffset={circumference * (1 - countdown / 100)}
-                  style={{ transition: "stroke-dashoffset 0.1s linear" }}
+            <div className="countdown-active w-10 h-10 rounded-full flex items-center justify-center">
+              <svg className="w-10 h-10 -rotate-90" viewBox="0 0 32 32">
+                <circle cx="16" cy="16" r="14" fill="none" stroke="currentColor" strokeWidth="2" className="opacity-10" />
+                <circle cx="16" cy="16" r="14" fill="none" strokeWidth="2"
+                  style={{ stroke: "var(--accent)", strokeDasharray: circumference, strokeDashoffset: circumference * (1 - countdown / 100), transition: "stroke-dashoffset 0.1s linear" }}
                 />
               </svg>
             </div>
@@ -398,31 +414,51 @@ export default function AdminPage() {
 
           {phase === "waiting_ready" && (
             <button onClick={handlePlayAll}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-medium px-5 py-2 rounded-xl text-sm transition-all duration-300 hover:scale-[1.02] active:scale-95">
+              className="spring-btn flex items-center gap-2 font-medium px-6 py-2.5 text-sm"
+              style={{
+                background: "linear-gradient(135deg, var(--accent), var(--accent2))",
+                color: "#fff",
+                borderRadius: "12px",
+                transitionTimingFunction: "var(--spring)",
+              }}>
               <Play className="w-4 h-4" /> Play All
             </button>
           )}
           {phase === "playing" && (
             <>
               <button onClick={() => handleSkip(tracks.findIndex((t) => t.id === activeTrack?.id))}
-                className="p-2 rounded-xl text-muted hover:text-emerald-400 transition-all duration-300 hover:bg-white/10">
+                className="spring-btn p-2.5 rounded-xl text-muted hover:text-main hover:bg-accent-soft"
+                style={{ borderRadius: "10px", transitionTimingFunction: "var(--spring)" }}>
                 <SkipForward className="w-4 h-4" />
               </button>
               <button onClick={handlePause}
-                className="flex items-center gap-1.5 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-white font-medium px-5 py-2 rounded-xl text-sm transition-all duration-300 hover:scale-[1.02] active:scale-95">
+                className="spring-btn flex items-center gap-2 font-medium px-6 py-2.5 text-sm"
+                style={{
+                  background: "linear-gradient(135deg, #f59e0b, #d97706)",
+                  color: "#fff",
+                  borderRadius: "12px",
+                  transitionTimingFunction: "var(--spring)",
+                }}>
                 <Pause className="w-4 h-4" /> Pause
               </button>
             </>
           )}
           {phase === "paused" && (
             <button onClick={handleResume}
-              className="flex items-center gap-1.5 bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-white font-medium px-5 py-2 rounded-xl text-sm transition-all duration-300 hover:scale-[1.02] active:scale-95">
+              className="spring-btn flex items-center gap-2 font-medium px-6 py-2.5 text-sm"
+              style={{
+                background: "linear-gradient(135deg, var(--accent), var(--accent2))",
+                color: "#fff",
+                borderRadius: "12px",
+                transitionTimingFunction: "var(--spring)",
+              }}>
               <Play className="w-4 h-4" /> Resume
             </button>
           )}
           {isActive && (
             <button onClick={handleStop}
-              className="px-4 py-2 rounded-xl text-sm text-muted hover:text-red-400 transition-all duration-300 hover:bg-white/10">
+              className="spring-btn px-4 py-2.5 rounded-xl text-sm"
+              style={{ color: "var(--text-muted)", borderRadius: "10px", transitionTimingFunction: "var(--spring)" }}>
               Stop
             </button>
           )}
