@@ -4,7 +4,7 @@ import { useEffect, useRef, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "@/lib/supabase";
 import { syncClock, getServerTime } from "@/lib/timeSync";
-import { Headphones, Radio, LogOut, Heart, Flame, Star, Music, Volume2 } from "lucide-react";
+import { Headphones, Radio, LogOut, Heart, Music, Volume2, Sun, Moon } from "lucide-react";
 import { useTheme } from "next-themes";
 
 const EMOJIS = ["❤️", "🔥", "🌟", "🎵", "💚", "💜", "✨"];
@@ -57,7 +57,6 @@ export default function ClientPage() {
     const analyser = analyserRef.current;
     const bufferLength = analyser.frequencyBinCount;
     const dataArray = new Uint8Array(bufferLength);
-    const isDark = document.documentElement.classList.contains("dark");
 
     function draw() {
       rafRef.current = requestAnimationFrame(draw);
@@ -66,8 +65,11 @@ export default function ClientPage() {
       const barWidth = canvas.width / bufferLength;
       for (let i = 0; i < bufferLength; i++) {
         const h = (dataArray[i] / 255) * canvas.height;
-        const hue = (i / bufferLength) * 140 + 140;
-        ctx.fillStyle = `hsla(${hue}, 80%, 55%, 0.7)`;
+        const gradient = ctx.createLinearGradient(0, canvas.height - h, 0, canvas.height);
+        gradient.addColorStop(0, "#34d399");
+        gradient.addColorStop(0.5, "#a78bfa");
+        gradient.addColorStop(1, "#f9a8d4");
+        ctx.fillStyle = gradient;
         ctx.fillRect(i * barWidth, canvas.height - h, Math.max(1, barWidth - 0.5), h);
       }
     }
@@ -102,75 +104,48 @@ export default function ClientPage() {
     channel.on("broadcast", { event: "PLAY" }, async (payload: any) => {
       const { track, title, start_time, position } = payload.payload;
       setTrackTitle(title || "Unknown Track");
-
       try {
         initAudio();
         const ctx = audioCtxRef.current!;
         if (ctx.state === "suspended") await ctx.resume();
-
         const resp = await fetch(track);
         const buf = await resp.arrayBuffer();
         const audioBuf = await ctx.decodeAudioData(buf);
-
         if (sourceRef.current) { sourceRef.current.stop(); sourceRef.current.disconnect(); }
-
         const src = ctx.createBufferSource();
         src.buffer = audioBuf;
         src.connect(gainRef.current!);
         sourceRef.current = src;
-
         const serverNow = getServerTime();
         const delayMs = start_time - serverNow;
         const delaySec = delayMs / 1000;
-        const targetTime = ctx.currentTime + Math.max(0, delaySec);
-        src.start(targetTime, position || 0);
+        src.start(ctx.currentTime + Math.max(0, delaySec), position || 0);
         setPhase("playing");
-      } catch (e) {
-        console.error("Playback error", e);
-        setPhase("waiting");
-      }
+      } catch (e) { console.error("Playback error", e); setPhase("waiting"); }
     });
 
     channel.on("broadcast", { event: "PAUSE" }, (payload: any) => {
-      const { position } = payload.payload;
-      if (sourceRef.current) {
-        try { sourceRef.current.stop(); } catch {}
-        sourceRef.current.disconnect();
-        sourceRef.current = null;
-      }
+      if (sourceRef.current) { try { sourceRef.current.stop(); } catch {} sourceRef.current.disconnect(); sourceRef.current = null; }
       setPhase("paused");
     });
 
     channel.on("broadcast", { event: "STOP" }, () => {
-      if (sourceRef.current) {
-        try { sourceRef.current.stop(); } catch {}
-        sourceRef.current.disconnect();
-        sourceRef.current = null;
-      }
-      setPhase("waiting");
-      setTrackTitle("");
+      if (sourceRef.current) { try { sourceRef.current.stop(); } catch {} sourceRef.current.disconnect(); sourceRef.current = null; }
+      setPhase("waiting"); setTrackTitle("");
     });
 
     channel.on("broadcast", { event: "STATE" }, async (payload: any) => {
       const { track, title, start_time, position, is_paused } = payload.payload;
       if (is_paused) {
-        setTrackTitle(title || "");
-        initAudio();
+        setTrackTitle(title || ""); initAudio();
         if (audioCtxRef.current) {
-          const resp = await fetch(track);
-          const buf = await resp.arrayBuffer();
+          const resp = await fetch(track); const buf = await resp.arrayBuffer();
           const audioBuf = await audioCtxRef.current.decodeAudioData(buf);
           const src = audioCtxRef.current.createBufferSource();
-          src.buffer = audioBuf;
-          src.connect(gainRef.current!);
-          const seekTo = position || 0;
-          src.start(0, seekTo);
-          src.stop();
-          setPhase("paused");
+          src.buffer = audioBuf; src.connect(gainRef.current!);
+          src.start(0, position || 0); src.stop(); setPhase("paused");
         }
-      } else {
-        await handleLateJoin(track, title, start_time, position);
-      }
+      } else { await handleLateJoin(track, title, start_time, position); }
     });
 
     channel.subscribe(async (status: string) => {
@@ -183,50 +158,33 @@ export default function ClientPage() {
         }
         if (adminState) break;
       }
-
       if (adminState?.state === "playing" && adminState.track) {
         await handleLateJoin(adminState.track, adminState.title || "", adminState.start_time || 0, adminState.position || 0);
       } else if (adminState?.state === "paused" && adminState.track) {
-        setTrackTitle(adminState.title || "");
-        setPhase("paused");
+        setTrackTitle(adminState.title || ""); setPhase("paused");
       } else if (adminState?.state === "preparing") {
-        setTrackTitle(adminState.title || "");
-        setPhase("preparing");
-      } else {
-        setPhase("waiting");
-      }
+        setTrackTitle(adminState.title || ""); setPhase("preparing");
+      } else { setPhase("waiting"); }
     });
 
     setPhase("waiting");
   }
 
   async function handleLateJoin(track: string, title: string, startTime: number, position: number) {
-    setTrackTitle(title || "");
-    setPhase("preparing");
+    setTrackTitle(title || ""); setPhase("preparing");
     try {
-      initAudio();
-      const ctx = audioCtxRef.current!;
+      initAudio(); const ctx = audioCtxRef.current!;
       if (ctx.state === "suspended") await ctx.resume();
-
-      const resp = await fetch(track);
-      const buf = await resp.arrayBuffer();
+      const resp = await fetch(track); const buf = await resp.arrayBuffer();
       const audioBuf = await ctx.decodeAudioData(buf);
-
       if (sourceRef.current) { try { sourceRef.current.stop(); } catch {} sourceRef.current.disconnect(); }
-
       const src = ctx.createBufferSource();
-      src.buffer = audioBuf;
-      src.connect(gainRef.current!);
+      src.buffer = audioBuf; src.connect(gainRef.current!);
       sourceRef.current = src;
-
       const elapsed = (getServerTime() - startTime) / 1000;
-      const seekTo = Math.max(0, (position || 0) + elapsed);
-      src.start(0, seekTo);
+      src.start(0, Math.max(0, (position || 0) + elapsed));
       setPhase("playing");
-    } catch (e) {
-      console.error("Late join error", e);
-      setPhase("waiting");
-    }
+    } catch (e) { console.error("Late join error", e); setPhase("waiting"); }
   }
 
   function handleReact() {
@@ -238,27 +196,28 @@ export default function ClientPage() {
 
   function handleLogout() {
     if (audioCtxRef.current) audioCtxRef.current.close();
-    localStorage.removeItem("music-sync-role");
-    router.push("/");
+    localStorage.removeItem("music-sync-role"); router.push("/");
   }
 
   if (phase === "join") {
     return (
       <div className="flex-1 flex items-center justify-center p-4">
-        <div className="glass rounded-3xl p-10 shadow-2xl text-center max-w-sm w-full">
+        <div className="bento-card p-10 text-center max-w-sm w-full">
           <button onClick={handleLogout} className="absolute top-4 right-4 text-muted hover:text-fg transition-colors">
             <LogOut className="w-5 h-5" />
           </button>
-          <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg">
+          <div className="w-20 h-20 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center bento-sm">
             <Radio className="w-10 h-10 text-white" />
           </div>
           <h1 className="text-2xl font-bold mb-1 text-gradient-moving">Music Sync</h1>
           <p className="text-muted text-sm mb-8">Join a synchronized listening session</p>
-          <button
-            onClick={handleJoin}
-            className="w-full btn-primary text-white font-semibold py-3 px-8 rounded-xl shadow-lg"
-          >
+          <button onClick={handleJoin}
+            className="w-full bento-btn bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold py-3 shadow-lg">
             Join Session
+          </button>
+          <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+            className="mt-3 w-full bento-btn bg-white/10 text-muted hover:text-fg text-sm flex items-center justify-center gap-2">
+            {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />} {theme === "dark" ? "Light" : "Dark"} Mode
           </button>
         </div>
       </div>
@@ -270,24 +229,28 @@ export default function ClientPage() {
       <button onClick={handleLogout} className="absolute top-4 right-4 text-muted hover:text-fg z-10 transition-colors">
         <LogOut className="w-5 h-5" />
       </button>
+      <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        className="absolute top-4 left-4 text-muted hover:text-fg z-10 transition-colors p-1.5 rounded-xl hover:bg-white/5">
+        {theme === "dark" ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
+      </button>
 
-      <div className="glass rounded-3xl p-8 shadow-2xl text-center max-w-sm w-full relative overflow-hidden">
+      <div className="bento-card p-8 text-center max-w-sm w-full relative">
         {phase === "connecting" && (
-          <div className="py-12">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center animate-pulse">
+          <div className="py-8">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center animate-pulse bento-sm">
               <Radio className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-lg font-semibold mb-2 text-gradient">Connecting...</h2>
             <p className="text-sm text-muted">Establishing synchronized session</p>
-            <div className="mt-4 w-48 h-1.5 mx-auto bg-slate-700/50 rounded-full overflow-hidden">
-              <div className="h-full bg-gradient-to-r from-emerald-400 via-emerald-500 to-emerald-600 rounded-full animate-pulse" style={{ width: "40%" }} />
+            <div className="mt-4 w-48 h-1.5 mx-auto bg-white/10 rounded-full overflow-hidden">
+              <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full animate-pulse" style={{ width: "40%" }} />
             </div>
           </div>
         )}
 
         {phase === "waiting" && (
-          <div className="py-12">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-slate-400 to-slate-600 flex items-center justify-center">
+          <div className="py-8">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center bento-sm">
               <Headphones className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-lg font-semibold mb-1 text-gradient">Session Connected</h2>
@@ -301,14 +264,14 @@ export default function ClientPage() {
         )}
 
         {(phase === "preparing" || phase === "paused") && (
-          <div className="py-12">
-            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center animate-pulse">
+          <div className="py-8">
+            <div className="w-16 h-16 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center animate-pulse bento-sm">
               <Music className="w-8 h-8 text-white" />
             </div>
             <h2 className="text-lg font-semibold mb-1 text-gradient">{phase === "preparing" ? "Preparing..." : "Paused"}</h2>
-            {trackTitle && <p className="text-amber-400 font-medium">{trackTitle}</p>}
+            {trackTitle && <p className="text-emerald-400 font-medium">{trackTitle}</p>}
             {phase === "preparing" && (
-              <div className="mt-4 w-48 h-1.5 mx-auto bg-slate-700/50 rounded-full overflow-hidden">
+              <div className="mt-4 w-48 h-1.5 mx-auto bg-white/10 rounded-full overflow-hidden">
                 <div className="h-full bg-gradient-to-r from-emerald-400 to-emerald-600 rounded-full animate-pulse" style={{ width: "60%" }} />
               </div>
             )}
@@ -316,29 +279,21 @@ export default function ClientPage() {
         )}
 
         {phase === "playing" && (
-          <div className="py-6">
-            <div className="w-24 h-24 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg">
+          <div className="py-4">
+            <div className="w-24 h-24 mx-auto mb-4 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center bento-sm">
               <Music className="w-12 h-12 text-white" />
             </div>
-            {trackTitle && <h2 className="text-lg font-semibold mb-3 text-gradient-moving">{trackTitle}</h2>}
-            <canvas ref={canvasRef} width={320} height={64} className="w-full h-16 rounded-lg mb-4" />
+            {trackTitle && <h2 className="text-lg font-bold mb-3 text-gradient-moving">{trackTitle}</h2>}
+            <canvas ref={canvasRef} width={320} height={60} className="w-full h-15 rounded-lg mb-4" />
             <div className="flex items-center justify-center gap-3 mb-4">
               <Volume2 className="w-4 h-4 text-muted" />
-              <input
-                type="range"
-                min={0}
-                max={1}
-                step={0.01}
-                value={volume}
+              <input type="range" min={0} max={1} step={0.01} value={volume}
                 onChange={(e) => setVolume(parseFloat(e.target.value))}
-                className="w-32 accent-emerald-500"
-              />
+                className="w-32 accent-emerald-500" />
               <span className="text-xs text-muted w-8 text-right">{Math.round(volume * 100)}%</span>
             </div>
-            <button
-              onClick={handleReact}
-              className="inline-flex items-center gap-2 btn-rose text-white font-medium px-6 py-2 rounded-full shadow-lg"
-            >
+            <button onClick={handleReact}
+              className="bento-btn bg-gradient-to-r from-rose-500 to-rose-600 text-white font-medium px-6 py-2 inline-flex items-center gap-2">
               <Heart className="w-4 h-4" /> React
             </button>
             {recentEmoji && (

@@ -13,7 +13,6 @@ export default function LoginPage() {
   const { theme, setTheme } = useTheme();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [role, setRole] = useState<"admin" | "user" | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -40,15 +39,13 @@ export default function LoginPage() {
 
   return (
     <div className="flex-1 flex items-center justify-center p-4 relative">
-      <button
-        onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
-        className="absolute top-4 right-4 text-muted hover:text-fg transition-colors p-2 rounded-xl hover:bg-white/5"
-      >
+      <button onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+        className="absolute top-4 right-4 text-muted hover:text-fg transition-colors p-2 rounded-xl hover:bg-white/5">
         {theme === "dark" ? <Sun className="w-5 h-5" /> : <Moon className="w-5 h-5" />}
       </button>
 
-      <div className="glass rounded-3xl p-10 shadow-2xl text-center max-w-md w-full">
-          <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center shadow-lg">
+      <div className="bento-card p-10 text-center max-w-md w-full">
+        <div className="w-16 h-16 mx-auto mb-5 rounded-2xl bg-gradient-to-br from-emerald-400 via-emerald-500 to-emerald-600 flex items-center justify-center bento-sm">
           <Music className="w-8 h-8 text-white" />
         </div>
         <h1 className="text-2xl font-bold mb-1 text-gradient-moving">Music Sync Player</h1>
@@ -58,34 +55,28 @@ export default function LoginPage() {
           <h2 className="text-left text-sm font-semibold mb-3 flex items-center gap-2">
             <Shield className="w-4 h-4 text-emerald-400" /> Admin Login
           </h2>
-          <input
-            type="text" placeholder="Username" value={username}
+          <input type="text" placeholder="Username" value={username}
             onChange={(e) => setUsername(e.target.value)}
-            className="w-full bg-white/10 text-fg rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 mb-2 placeholder:text-muted/60"
-          />
-          <input
-            type="password" placeholder="Password" value={password}
+            className="w-full bg-white/10 text-fg rounded-xl px-4 py-2.5 text-sm border border-white/5 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 mb-2 placeholder:text-muted/50" />
+          <input type="password" placeholder="Password" value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full bg-white/10 text-fg rounded-xl px-4 py-2.5 border border-white/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 mb-2 placeholder:text-muted/60"
-          />
+            className="w-full bg-white/10 text-fg rounded-xl px-4 py-2.5 text-sm border border-white/5 focus:outline-none focus:ring-2 focus:ring-emerald-500/30 mb-2 placeholder:text-muted/50" />
           {error && <p className="text-red-400 text-sm text-left mb-2">{error}</p>}
-          <button
-            type="submit"
-            className="w-full btn-primary text-white font-semibold py-2.5 px-4 rounded-xl shadow-lg"
-          >
+          <button type="submit"
+            className="w-full bento-btn bg-gradient-to-r from-emerald-500 to-emerald-600 text-white font-semibold py-2.5 shadow-lg">
             Login as Admin
           </button>
         </form>
 
         <div className="relative mb-6">
           <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-white/10" /></div>
-          <div className="relative flex justify-center text-xs"><span className="px-2 bg-transparent text-gradient-moving font-semibold">or</span></div>
+          <div className="relative flex justify-center text-xs">
+            <span className="px-2 bg-transparent text-gradient-moving font-semibold">or</span>
+          </div>
         </div>
 
-        <button
-          onClick={handleUserLogin}
-          className="w-full flex items-center justify-center gap-2 glass-strong hover:bg-emerald-500/10 text-fg font-semibold py-2.5 px-4 rounded-xl transition-all duration-200 hover:scale-[1.01] active:scale-95 border border-emerald-500/20 hover:border-emerald-500/40"
-        >
+        <button onClick={handleUserLogin}
+          className="w-full bento-btn bg-gradient-to-r from-emerald-500/20 to-emerald-600/20 text-fg font-semibold py-2.5 flex items-center justify-center gap-2 border border-emerald-500/20 hover:border-emerald-500/40">
           <User className="w-4 h-4" /> Login as User
         </button>
       </div>
